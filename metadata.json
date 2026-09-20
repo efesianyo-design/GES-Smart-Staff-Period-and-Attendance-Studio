@@ -1,0 +1,11 @@
+{
+  "name": "GES Smart Staff & Period Attendance Studio",
+  "description": "High-performance, offline-first attendance and period tracker by Sir Eugene Technologies featuring Dual-Operating Modes (Shared Kiosk & Personal BYOD), 20s rotating Campus QR Beacon, and GPS geofencing.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
