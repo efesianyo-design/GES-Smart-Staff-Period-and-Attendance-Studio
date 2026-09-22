@@ -13,7 +13,7 @@ import {
   Info,
 } from 'lucide-react';
 import { PORTAL_DEFINITIONS, PortalType, getFullPortalUrl } from '../utils/routes';
-import { QRCodeSVG } from 'qrcode.react';
+import { DynamicQrMatrix } from './DynamicQrMatrix';
 
 interface DeepLinksDirectoryModalProps {
   isOpen: boolean;
@@ -224,8 +224,8 @@ export const DeepLinksDirectoryModal: React.FC<DeepLinksDirectoryModalProps> = (
             <h4 className="text-base font-bold text-white">{activeQrModal.label}</h4>
             <p className="text-xs text-slate-300">{activeQrModal.description}</p>
 
-            <div className="p-4 rounded-xl bg-white mx-auto w-fit shadow-lg">
-              <QRCodeSVG value={activeQrModal.url} size={200} level="M" />
+            <div className="p-4 rounded-xl bg-white mx-auto w-fit shadow-lg flex items-center justify-center">
+              <DynamicQrMatrix value={activeQrModal.url} size={180} />
             </div>
 
             <p className="text-[11px] font-mono text-emerald-400 break-all select-all">

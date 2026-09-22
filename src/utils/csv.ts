@@ -1,9 +1,40 @@
 import { GateAttendanceRecord, PeriodTeachingSession, StaffMember, Classroom, Learner } from '../types';
 
 /**
- * Downloads data as a CSV file
+ * Downloads data as a CSV file.
+ * Auto-detects argument order: supports both (filename, content) and (content, filename).
  */
-export function downloadCSV(filename: string, content: string) {
+export function downloadCSV(arg1: string, arg2: string) {
+  let filename = (arg1 || '').trim();
+  let content = arg2 || '';
+
+  // If arg1 contains line breaks or commas or looks like CSV body, while arg2 looks like a filename (or ends with .csv)
+  const arg1LooksLikeContent = arg1.includes('\n') || arg1.length > 200 || (!arg1.toLowerCase().endsWith('.csv') && arg2.toLowerCase().endsWith('.csv'));
+  const arg2LooksLikeFilename = arg2.toLowerCase().endsWith('.csv') || (!arg2.includes('\n') && arg2.length < 150);
+
+  if (arg1LooksLikeContent && arg2LooksLikeFilename) {
+    content = arg1;
+    filename = arg2.trim();
+  }
+
+  // Clean filename: remove newlines, invalid filesystem characters, quotes
+  filename = filename
+    .split('\n')[0]
+    .replace(/["\r]/g, '')
+    .replace(/[/\\?%*:|"<>]/g, '_')
+    .trim();
+
+  if (!filename || filename.length === 0) {
+    filename = `GES_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+  } else if (!filename.toLowerCase().endsWith('.csv')) {
+    filename = `${filename}.csv`;
+  }
+
+  // Cap filename length to avoid OS limits
+  if (filename.length > 100) {
+    filename = filename.slice(0, 96) + '.csv';
+  }
+
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -22,21 +53,9 @@ export function generateStaffAttendanceCSV(
   records: GateAttendanceRecord[],
   schoolName: string
 ): string {
-  const institutionUpper = (schoolName || 'SENIOR HIGH SCHOOL').toUpperCase();
-  const timestamp = new Date().toLocaleString();
+  const cleanSchool = (schoolName || 'Senior High School').replace(/"/g, '""');
 
-  const header = [
-    `"=========================================================================================="`,
-    `"INSTITUTION / SCHOOL:","${institutionUpper}"`,
-    `"SOFTWARE PLATFORM:","GES Smart Staff & Period Attendance Studio"`,
-    `"SYSTEM DEVELOPER:","Sir Eugene Technologies"`,
-    `"REPORT TITLE:","GHANA EDUCATION SERVICE (GES) OFFICIAL STAFF GATE ATTENDANCE REGISTER"`,
-    `"GENERATED TIMESTAMP:","${timestamp}"`,
-    `"COMPLIANCE STANDARD:","GES Anti-Proxy Biometric & Geofence Protocol"`,
-    `"=========================================================================================="`,
-    '',
-    'Date,Staff ID,Staff Name,Department,Arrival Time,Punctuality Status,Departure Time,Distance from Gate (m),Identity Verified,On Campus,Verification Method,Login Trace,Device Signature,Closing Reflection Note'
-  ].join('\n');
+  const header = 'Date,School,Staff ID,Staff Name,Department,Arrival Time,Punctuality Status,Departure Time,Distance from Gate (m),Identity Verified,On Campus,Verification Method,Login Trace,Device Signature,Closing Reflection Note';
 
   const rows = records.map((r) => {
     const punctuality =
@@ -51,6 +70,7 @@ export function generateStaffAttendanceCSV(
 
     return [
       `"${r.date}"`,
+      `"${cleanSchool}"`,
       `"${r.staffId}"`,
       `"${r.staffName}"`,
       `"${r.department}"`,
@@ -77,21 +97,9 @@ export function generateInstructionalContactCSV(
   sessions: PeriodTeachingSession[],
   schoolName: string
 ): string {
-  const institutionUpper = (schoolName || 'SENIOR HIGH SCHOOL').toUpperCase();
-  const timestamp = new Date().toLocaleString();
+  const cleanSchool = (schoolName || 'Senior High School').replace(/"/g, '""');
 
-  const header = [
-    `"=========================================================================================="`,
-    `"INSTITUTION / SCHOOL:","${institutionUpper}"`,
-    `"SOFTWARE PLATFORM:","GES Smart Staff & Period Attendance Studio"`,
-    `"SYSTEM DEVELOPER:","Sir Eugene Technologies"`,
-    `"REPORT TITLE:","GHANA EDUCATION SERVICE (GES) INSTRUCTIONAL TIME & PERIOD CONTACT LOG"`,
-    `"GENERATED TIMESTAMP:","${timestamp}"`,
-    `"COMPLIANCE STANDARD:","GES Academic Master Period Audit & Syllabus Pace Verification"`,
-    `"=========================================================================================="`,
-    '',
-    'Date,Teacher Staff ID,Teacher Name,Classroom / Stream,Class Code(s),Lecture Type,Subject,Start Time,End Time,Contact Minutes,Abbreviated Period (<15m),Roster Count,On-Time Learners,Late Count,Late Learners,Absent Count,Absent Learners,Login Trace,Session Notes'
-  ].join('\n');
+  const header = 'Date,School,Teacher Staff ID,Teacher Name,Classroom / Stream,Class Code(s),Lecture Type,Subject,Start Time,End Time,Contact Minutes,Abbreviated Period (<15m),Roster Count,On-Time Learners,Late Count,Late Learners,Absent Count,Absent Learners,Login Trace,Session Notes';
 
   const rows = sessions.map((s) => {
     const absentCount = s.totalRosterCount - s.presentCount;
@@ -109,6 +117,7 @@ export function generateInstructionalContactCSV(
 
     return [
       `"${s.date}"`,
+      `"${cleanSchool}"`,
       `"${s.teacherStaffId}"`,
       `"${s.teacherName}"`,
       `"${s.className}"`,

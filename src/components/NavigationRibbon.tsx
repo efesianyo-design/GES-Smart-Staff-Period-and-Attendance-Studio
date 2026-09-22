@@ -15,6 +15,7 @@ import {
   Radio,
   Lock,
   Link2,
+  Shield,
   Eye,
   EyeOff,
   ArrowRight,
@@ -46,6 +47,8 @@ interface NavigationRibbonProps {
   activePortal?: PortalType;
   onNavigateToPortal?: (portal: PortalType, subType?: 'teaching' | 'non_teaching') => void;
   onToggleStaffOnlyView?: () => void;
+  onOpenDeepLinks?: () => void;
+  onOpenPrivacyPolicy?: () => void;
 }
 
 export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
@@ -70,6 +73,8 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
   activePortal = 'attendance',
   onNavigateToPortal,
   onToggleStaffOnlyView,
+  onOpenDeepLinks,
+  onOpenPrivacyPolicy,
 }) => {
   const [timeString, setTimeString] = useState('');
   const [dateString, setDateString] = useState('');
@@ -244,6 +249,32 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
                 <span className="hidden sm:inline">Staff View</span>
               </button>
             )
+          )}
+
+          {/* Deep Links Directory Launcher */}
+          {onOpenDeepLinks && (
+            <button
+              type="button"
+              onClick={onOpenDeepLinks}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 hover:text-white text-xs font-semibold transition"
+              title="View all dedicated portal URLs, QR codes, and access permissions"
+            >
+              <Link2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden md:inline">Portal Links</span>
+            </button>
+          )}
+
+          {/* Act 843 Data Privacy Policy */}
+          {onOpenPrivacyPolicy && (
+            <button
+              type="button"
+              onClick={onOpenPrivacyPolicy}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 hover:text-white text-xs font-semibold transition"
+              title="Ghana Data Protection Act 2012 (Act 843) Compliance & Security Shield"
+            >
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden lg:inline">Act 843 Privacy</span>
+            </button>
           )}
 
           {/* Help Guide */}
@@ -453,6 +484,22 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
               >
                 <BarChart3 className="w-3.5 h-3.5" />
                 <span>Admin &amp; GES Reports</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  onSelectMode('super_admin');
+                  soundSynthesizer.playScanBeep();
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                  currentMode === 'super_admin'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-indigo-300 border border-indigo-500/40'
+                }`}
+                title="GES National / Regional Super Administrator Command"
+              >
+                <span>🏛️</span>
+                <span>Super Admin</span>
               </button>
             </>
           )}

@@ -25,6 +25,27 @@ export interface SecurityIncident {
   status: 'active_alert' | 'reviewed' | 'cleared';
 }
 
+export const GHANA_16_REGIONS = [
+  'Ahafo',
+  'Ashanti',
+  'Bono',
+  'Bono East',
+  'Central',
+  'Eastern',
+  'Greater Accra',
+  'North East',
+  'Northern',
+  'Oti',
+  'Savannah',
+  'Upper East',
+  'Upper West',
+  'Volta',
+  'Western',
+  'Western North',
+] as const;
+
+export type GhanaRegion = typeof GHANA_16_REGIONS[number];
+
 export interface SchoolDirectoryItem {
   code: string;
   name: string;
@@ -36,6 +57,10 @@ export interface SchoolDirectoryItem {
   nonTeachingCount: number;
   classCount: number;
   status: 'active' | 'synced';
+  logo?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  slogan?: string;
 }
 
 export const OFFICIAL_GES_SCHOOLS: SchoolDirectoryItem[] = [
@@ -99,7 +124,73 @@ export const OFFICIAL_GES_SCHOOLS: SchoolDirectoryItem[] = [
     classCount: 40,
     status: 'synced',
   },
+  {
+    code: 'GES-OR-BIA-006',
+    name: 'Biakoye Community Senior High School',
+    district: 'Biakoye District',
+    region: 'Oti Region',
+    lat: 7.1500,
+    lng: 0.3500,
+    staffCount: 26,
+    nonTeachingCount: 14,
+    classCount: 22,
+    status: 'active',
+  },
 ];
+
+const CUSTOM_SCHOOLS_KEY = 'ges_custom_schools_v1';
+
+export function getCustomSchools(): SchoolDirectoryItem[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_SCHOOLS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getAllSchools(): SchoolDirectoryItem[] {
+  const custom = getCustomSchools();
+  const existingCodes = new Set(custom.map((s) => s.code));
+  const defaults = OFFICIAL_GES_SCHOOLS.filter((s) => !existingCodes.has(s.code));
+  return [...defaults, ...custom];
+}
+
+export function addCustomSchool(school: SchoolDirectoryItem): void {
+  const custom = getCustomSchools();
+  const filtered = custom.filter((s) => s.code !== school.code);
+  filtered.push(school);
+  localStorage.setItem(CUSTOM_SCHOOLS_KEY, JSON.stringify(filtered));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ges_schools_updated', { detail: { school } }));
+  }
+}
+
+export function updateCustomSchool(code: string, updates: Partial<SchoolDirectoryItem>): void {
+  const custom = getCustomSchools();
+  const idx = custom.findIndex((s) => s.code === code);
+  if (idx !== -1) {
+    custom[idx] = { ...custom[idx], ...updates };
+  } else {
+    // Check if it was a default school being modified
+    const def = OFFICIAL_GES_SCHOOLS.find((s) => s.code === code);
+    if (def) {
+      custom.push({ ...def, ...updates });
+    }
+  }
+  localStorage.setItem(CUSTOM_SCHOOLS_KEY, JSON.stringify(custom));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ges_schools_updated', { detail: { code, updates } }));
+  }
+}
+
+export function deleteCustomSchool(code: string): void {
+  const custom = getCustomSchools().filter((s) => s.code !== code);
+  localStorage.setItem(CUSTOM_SCHOOLS_KEY, JSON.stringify(custom));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ges_schools_updated', { detail: { code, deleted: true } }));
+  }
+}
 
 const SECURITY_STORAGE_KEYS = {
   INCIDENTS: 'ges_security_incidents_v1',
@@ -207,9 +298,9 @@ class SecurityEngine {
       });
     }
 
-    // Threshold 2: 5 Failed Attempts -> 5-Minute Critical Lockout
+    // Threshold 2: 5 Failed Attempts -> 60-Second Critical Lockout
     if (count >= 5) {
-      const lockoutDurationMs = 300000; // 5 minutes
+      const lockoutDurationMs = 60000; // 60 seconds
       const unlockTime = now + lockoutDurationMs;
       this.lockouts.set(identifier, unlockTime);
       this.saveLockouts();
@@ -219,7 +310,7 @@ class SecurityEngine {
         staffIdAttempted: metadata.staffId,
         staffNameAttempted: metadata.staffName,
         type: 'brute_force_pin',
-        details: `CRITICAL BRUTE-FORCE LOCKOUT: 5 consecutive failed verification attempts detected. Target device throttled and locked for 5 minutes. Audit flagged for GES Administrative review.`,
+        details: `CRITICAL BRUTE-FORCE LOCKOUT: 5 consecutive failed verification attempts detected. Target device throttled and locked for 60 seconds. Audit flagged for GES Administrative review.`,
         severity: 'critical',
         deviceSignature: metadata.deviceSignature,
         coordinates: metadata.coordinates,
@@ -317,6 +408,10 @@ class SecurityEngine {
       return true;
     }
     return false;
+  }
+
+  public clearIncident(id: string): boolean {
+    return this.resolveIncident(id);
   }
 
   public clearAllIncidents() {

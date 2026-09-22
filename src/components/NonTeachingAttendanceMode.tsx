@@ -41,6 +41,7 @@ import { soundSynthesizer } from '../utils/audio';
 import { getTodayDateString } from '../utils/storage';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { getDeviceSignature, formatCoordinates } from '../utils/geo';
+import { securityEngine } from '../utils/security';
 
 interface NonTeachingAttendanceModeProps {
   staffList: NonTeachingStaffMember[];
@@ -194,11 +195,41 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
 
   const handleVerifyPinAndPunch = () => {
     if (!pinModalStaff) return;
-    if (enteredPin !== pinModalStaff.pin && enteredPin !== '1234') {
+
+    // Check if staff ID is currently locked out
+    const lockout = securityEngine.isLockedOut(pinModalStaff.staffId);
+    if (lockout.locked) {
       soundSynthesizer.playOutOfBoundsBuzzer();
-      setPinError(`Invalid 4-digit PIN for ${pinModalStaff.name}. Please enter correct PIN.`);
+      setPinError(`🚨 PIN ENTRY LOCKED: Multiple failed verification attempts. Please wait ${lockout.remainingSeconds}s before retrying. Incident recorded for GES audit.`);
       return;
     }
+
+    if (enteredPin !== pinModalStaff.pin && enteredPin !== '1234') {
+      soundSynthesizer.playOutOfBoundsBuzzer();
+      const failResult = securityEngine.recordFailedAttempt(
+        pinModalStaff.staffId,
+        schoolConfig?.schoolCode || 'GES-VR-HO-002',
+        {
+          staffId: pinModalStaff.staffId,
+          staffName: pinModalStaff.name,
+          type: 'brute_force_pin',
+          deviceSignature: getDeviceSignature(),
+          coordinates: geo.lat !== null && geo.lng !== null ? { lat: geo.lat, lng: geo.lng } : undefined,
+        }
+      );
+
+      if (failResult.locked) {
+        setPinError(`🚨 BRUTE-FORCE LOCKOUT TRIGGERED: 5 failed PIN attempts! Account locked for ${failResult.remainingSeconds} seconds.`);
+      } else if (failResult.count >= 3) {
+        setPinError(`⚠️ Security Warning: ${failResult.count} failed PIN attempts. Device will lock out after 5 failed attempts.`);
+      } else {
+        setPinError(`Invalid 4-digit PIN for ${pinModalStaff.name}. Please enter correct PIN.`);
+      }
+      return;
+    }
+
+    // Clear failed attempts on successful PIN entry
+    securityEngine.clearFailedAttempts(pinModalStaff.staffId);
 
     // Geofence check: Must be within campus boundaries or have explicit supervisor override
     if (!geo.isWithinBounds && !supervisorOverride) {

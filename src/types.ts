@@ -15,6 +15,7 @@ export interface StaffMember {
   pin: string; // 4-digit PIN e.g. "1234"
   role: StaffRole;
   avatarColor: string;
+  avatar?: string;
   subjects: string[];
   category?: StaffCategory; // Permanent GES staff vs NSS personnel vs Intern/Student Teacher
   rank?: string; // e.g. Principal Superintendent, Assistant Director II, NSS Personnel
@@ -115,6 +116,18 @@ export interface PeriodTeachingSession {
   deviceSignature?: string;
   loginTrace?: string;
   isAbbreviated?: boolean;
+  schoolCode?: string;
+  schoolName?: string;
+  periodNumber?: number;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  actualStartTime?: string;
+  actualEndTime?: string;
+  isLateArrival?: boolean;
+  lateMinutes?: number;
+  isEarlyDeparture?: boolean;
+  earlyMinutes?: number;
+  punctualityStatus?: 'on_time' | 'late' | 'early_departure' | 'compliant';
 }
 
 export interface SchoolConfig {
@@ -129,9 +142,10 @@ export interface SchoolConfig {
   lateCutoff: string; // e.g. "08:30"
   closingTime: string; // e.g. "14:30"
   superAdminPin: string; // e.g. "1234"
+  logoUrl?: string;
 }
 
-export type AppMode = 'gate_clock' | 'period_tracker' | 'master_roster' | 'non_teaching' | 'admin_reports';
+export type AppMode = 'gate_clock' | 'period_tracker' | 'master_roster' | 'non_teaching' | 'admin_reports' | 'super_admin';
 
 export type NonTeachingRole =
   | 'Administrator'

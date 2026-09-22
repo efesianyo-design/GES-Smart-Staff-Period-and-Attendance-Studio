@@ -244,6 +244,36 @@ class SoundSynthesizer {
     osc.start(now);
     osc.stop(now + 0.19);
   }
+
+  public playBeep(freq: number = 800, durationMs: number = 80) {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + durationMs / 1000);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + durationMs / 1000 + 0.01);
+  }
+
+  public playSuccessChime() {
+    this.playClockInChime();
+  }
+
+  public playWarningBeep() {
+    this.playOutOfBoundsBuzzer();
+  }
 }
 
 export const soundSynthesizer = new SoundSynthesizer();

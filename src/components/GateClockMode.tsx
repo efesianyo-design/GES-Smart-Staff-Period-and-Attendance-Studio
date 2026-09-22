@@ -25,6 +25,7 @@ import {
   ExternalLink,
   Timer,
   Send,
+  MessageCircle,
 } from 'lucide-react';
 import {
   StaffMember,
@@ -39,6 +40,8 @@ import { soundSynthesizer } from '../utils/audio';
 import { getTodayDateString, storageEngine } from '../utils/storage';
 import { generateBeaconToken, verifyBeaconToken } from '../utils/beacon';
 import { DynamicQrMatrix } from './DynamicQrMatrix';
+import { securityEngine } from '../utils/security';
+import { FirebasePhoneAuthBox } from './FirebasePhoneAuthBox';
 
 interface GateClockModeProps {
   staffList: StaffMember[];
@@ -101,7 +104,7 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
   const [deptFilter, setDeptFilter] = useState('ALL');
 
   // --- 2-STEP VERIFICATION SUBSYSTEM ---
-  // Step 1: 6-Digit SMS / Telco OTP
+  // Step 1: 6-Digit SMS / Telco / WhatsApp OTP
   const [otpCode, setOtpCode] = useState<string>(() =>
     Math.floor(100000 + Math.random() * 900000).toString()
   );
@@ -110,6 +113,7 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
   const [otpError, setOtpError] = useState<boolean>(false);
   const [otpSecondsRemaining, setOtpSecondsRemaining] = useState<number>(90);
   const [showOtpBanner, setShowOtpBanner] = useState<boolean>(true);
+  const [otpDeliveryChannel, setOtpDeliveryChannel] = useState<'sms' | 'whatsapp'>('sms');
 
   // Step 2: Real-Time QR Beacon Presence (Staff present in front of terminal)
   const [isBeaconVerified, setIsBeaconVerified] = useState<boolean>(false);
@@ -362,6 +366,19 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
   // Fast Touch Numpad & OTP Handlers (Step 1)
   const handleKeypadPress = (digit: string) => {
     soundSynthesizer.playKeypadBeep();
+    if (!selectedStaff) return;
+
+    // Check if staff ID is currently locked out
+    const lockout = securityEngine.isLockedOut(selectedStaff.staffId);
+    if (lockout.locked) {
+      soundSynthesizer.playOutOfBoundsBuzzer();
+      setFeedbackMsg({
+        text: `🚨 ACCESS LOCKED: Multiple failed verification attempts. Please wait ${lockout.remainingSeconds}s before retrying. Incident recorded for GES security audit.`,
+        type: 'error',
+      });
+      return;
+    }
+
     if (otpInput.length < 6) {
       const newOtp = otpInput + digit;
       setOtpInput(newOtp);
@@ -376,6 +393,7 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
         ) {
           setIsOtpVerified(true);
           soundSynthesizer.playScanBeep();
+          securityEngine.clearFailedAttempts(selectedStaff.staffId);
           setFeedbackMsg({
             text: `✅ Step 1 Verified: 6-Digit OTP accepted for ${selectedStaff.name}. Now complete Step 2 (QR Beacon Presence).`,
             type: 'success',
@@ -383,6 +401,34 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
         } else {
           setOtpError(true);
           soundSynthesizer.playOutOfBoundsBuzzer();
+          const failResult = securityEngine.recordFailedAttempt(
+            selectedStaff.staffId,
+            config.schoolCode || 'GES-VR-HO-002',
+            {
+              staffId: selectedStaff.staffId,
+              staffName: selectedStaff.name,
+              type: 'multiple_failed_otp',
+              deviceSignature: getDeviceSignature(),
+              coordinates: geo.lat !== null && geo.lng !== null ? { lat: geo.lat, lng: geo.lng } : undefined,
+            }
+          );
+
+          if (failResult.locked) {
+            setFeedbackMsg({
+              text: `🚨 BRUTE FORCE ALERT: 5 failed attempts! Account temporarily locked for ${failResult.remainingSeconds}s. Alert dispatched to GES Super Admin.`,
+              type: 'error',
+            });
+          } else if (failResult.count >= 3) {
+            setFeedbackMsg({
+              text: `⚠️ Security Warning: ${failResult.count} failed attempts. Account will be locked out after 5 failed entries.`,
+              type: 'error',
+            });
+          } else {
+            setFeedbackMsg({
+              text: `❌ Incorrect OTP entered. Please check SMS or tap "Auto-Fill Demo OTP".`,
+              type: 'error',
+            });
+          }
         }
       }
     }
@@ -413,8 +459,12 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
     });
   };
 
-  const handleResendOtp = () => {
+  const handleResendOtp = (channel?: 'sms' | 'whatsapp') => {
     soundSynthesizer.playScanBeep();
+    const targetChannel = channel || otpDeliveryChannel;
+    if (channel) {
+      setOtpDeliveryChannel(channel);
+    }
     const fresh = generateNewOtp();
     setOtpCode(fresh);
     setOtpSecondsRemaining(90);
@@ -423,7 +473,9 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
     setOtpError(false);
     setShowOtpBanner(true);
     setFeedbackMsg({
-      text: `📱 Fresh 6-Digit OTP (${fresh}) sent to ${selectedStaff?.name || 'Staff'}'s mobile. Valid for 90s.`,
+      text: `📱 Fresh 6-Digit OTP (${fresh}) dispatched via ${
+        targetChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'
+      } to ${selectedStaff?.name || 'Staff'}'s mobile. Valid for 90s.`,
       type: 'success',
     });
   };
@@ -1095,142 +1147,13 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
             )}
           </div>
 
-          {/* --- STEP 1: 6-DIGIT SMS / TELCO OTP VERIFICATION --- */}
-          <div className="pt-3 border-t border-slate-800 space-y-3">
-            {/* Step 1 Header & Timer */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/40 text-[10px] font-bold text-emerald-300">
-                  STEP 1 OF 2
-                </span>
-                <span className="text-xs font-bold text-white flex items-center gap-1">
-                  <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Handset SMS / Telco OTP</span>
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-[11px] font-mono">
-                <Timer className={`w-3.5 h-3.5 ${otpSecondsRemaining <= 15 ? 'text-rose-400 animate-spin' : 'text-slate-400'}`} />
-                <span className={otpSecondsRemaining <= 15 ? 'text-rose-400 font-bold' : 'text-slate-300'}>
-                  {otpSecondsRemaining}s
-                </span>
-              </div>
-            </div>
-
-            {/* Simulated SMS Notification Banner */}
-            {selectedStaff && (
-              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2 text-xs">
-                <div className="min-w-0">
-                  <p className="text-[11px] text-slate-300 truncate">
-                    📱 Code dispatched to <span className="text-emerald-400 font-mono font-semibold">{selectedStaff.phone || '+233 24 555 0192'}</span>
-                  </p>
-                  <p className="text-[10px] text-slate-500">Enter the 6-digit verification code below</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-medium text-slate-300 hover:text-white flex items-center gap-1 flex-shrink-0 transition"
-                  title="Resend 6-Digit OTP"
-                >
-                  <RefreshCw className="w-3 h-3 text-slate-400" />
-                  <span>Resend</span>
-                </button>
-              </div>
-            )}
-
-            {/* Quick Demo Helper Button */}
-            <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-[10px] text-slate-500 font-mono">Demo OTP: <strong className="text-emerald-400">{otpCode}</strong></span>
-              <button
-                type="button"
-                onClick={handleAutofillDemoOtp}
-                className="px-2 py-0.5 rounded-md bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-[10px] font-bold text-emerald-300 transition active:scale-95"
-              >
-                ⚡ Auto-Fill Demo OTP
-              </button>
-            </div>
-
-            {/* 6-Digit Display Boxes */}
-            <div className="flex items-center justify-center gap-1.5 sm:gap-2">
-              {[0, 1, 2, 3, 4, 5].map((i) => {
-                const filled = otpInput.length > i;
-                const isCurrent = otpInput.length === i;
-                return (
-                  <div
-                    key={i}
-                    className={`w-9 h-11 sm:w-10 sm:h-12 rounded-xl border flex items-center justify-center text-lg font-mono font-bold transition-all ${
-                      otpError
-                        ? 'border-rose-500 bg-rose-950/40 text-rose-400 animate-shake'
-                        : isOtpVerified
-                        ? 'border-emerald-500 bg-emerald-950/60 text-emerald-300 shadow-sm shadow-emerald-500/30'
-                        : filled
-                        ? 'border-emerald-500 bg-slate-950 text-emerald-400 font-black'
-                        : isCurrent
-                        ? 'border-emerald-500/80 bg-slate-950/80 text-slate-400 ring-1 ring-emerald-500/30'
-                        : 'border-slate-800 bg-slate-950 text-slate-600'
-                    }`}
-                  >
-                    {filled ? (isOtpVerified ? otpInput[i] : '●') : '○'}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* On-Screen Touch Numpad for Tablet Kiosk */}
-            <div className="grid grid-cols-3 gap-1.5 max-w-xs mx-auto">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-                <button
-                  key={digit}
-                  type="button"
-                  onClick={() => handleKeypadPress(digit)}
-                  className="py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-white font-mono font-bold text-sm shadow-xs active:scale-95 transition"
-                >
-                  {digit}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={handleKeypadClear}
-                className="py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-rose-400 font-semibold text-xs active:scale-95 transition"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={() => handleKeypadPress('0')}
-                className="py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-white font-mono font-bold text-sm active:scale-95 transition"
-              >
-                0
-              </button>
-              <button
-                type="button"
-                onClick={handleKeypadBackspace}
-                className="py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white flex items-center justify-center active:scale-95 transition"
-                title="Backspace"
-              >
-                <Delete className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Step 1 Verification Status Indicator */}
-            {isOtpVerified ? (
-              <div className="p-2 rounded-xl bg-emerald-950/60 border border-emerald-500/50 flex items-center justify-between text-xs text-emerald-300 font-semibold">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                  <span>Step 1 Verified: OTP Authenticated</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleKeypadClear}
-                  className="text-[10px] text-slate-400 hover:text-white underline ml-2"
-                >
-                  Reset OTP
-                </button>
-              </div>
-            ) : (
-              <p className="text-[11px] text-center text-slate-400">
-                Staff must verify identity via Step 1 OTP before completing QR Beacon scan.
-              </p>
-            )}
+          {/* --- STEP 1: FIREBASE PHONE AUTH OTP VERIFICATION --- */}
+          <div className="pt-3 border-t border-slate-800">
+            <FirebasePhoneAuthBox
+              staffPhone={selectedStaff?.phone || '+233245550192'}
+              staffName={selectedStaff?.name || 'Staff Member'}
+              onVerified={() => setIsOtpVerified(true)}
+            />
           </div>
         </div>
 
@@ -1402,35 +1325,64 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
               </div>
             )}
 
-            {/* In BYOD Mode: Quick Campus Beacon Scanner Button */}
+            {/* In BYOD Mode: Scan Common Room Kiosk Screen (User Staff Device) */}
             {activeDeviceMode === 'byod' && (
-              <div className="mt-3 p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Radio className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Step 2: Scan Terminal QR Beacon</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-300 mt-0.5">
-                    Scan the kiosk&apos;s rotating beacon to verify your physical presence on campus.
-                  </p>
+              <div className="mt-3 p-4 rounded-2xl bg-indigo-950/50 border border-indigo-500/40 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-900 border border-indigo-400 text-[10px] font-bold text-indigo-200">
+                        📱 BYOD Staff Phone
+                      </span>
+                      <span className="text-[11px] text-indigo-300 font-mono">
+                        Step 2: Common Room Optical Presence
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-extrabold text-white">
+                      Scan Staff Common Room Kiosk Screen
+                    </h4>
+                    <p className="text-xs text-slate-300 leading-relaxed max-w-xl">
+                      Per GES security policy, the dynamic QR beacon cannot be generated on personal phones. It is broadcast <strong>only on the Main Kiosk Terminal in the Staff Common Room</strong>. Point your camera at that terminal to clock in.
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                  {onOpenBeaconScanner && (
+                    <button
+                      type="button"
+                      onClick={onOpenBeaconScanner}
+                      className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 flex-1 sm:flex-none"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>📷 Open Camera to Scan Kiosk Screen</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleVerifyTerminalBeaconPresence}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-semibold transition"
+                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition"
+                    title="Simulate scanning common room kiosk screen"
                   >
-                    Quick Verify
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onOpenBeaconScanner}
-                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-600/30 transition flex items-center justify-center gap-1.5 flex-1 sm:flex-none"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                    <span>Scan Kiosk Screen</span>
+                    🧪 Simulate Kiosk Screen Capture
                   </button>
                 </div>
+
+                {isBeaconVerified ? (
+                  <div className="p-2.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-xs text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>
+                      <strong>Presence Confirmed:</strong> Successfully scanned Common Room Kiosk screen ({verifiedBeaconInfo?.token.slice(0, 16)}...).
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs text-amber-300 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      <strong>Step 2 Pending:</strong> Scan the Staff Common Room Kiosk screen with your phone camera to complete clock-in.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
