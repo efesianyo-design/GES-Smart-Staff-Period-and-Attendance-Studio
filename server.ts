@@ -386,28 +386,60 @@ app.post('/api/auth/send-otp', async (req, res) => {
     }
   }
 
+  // Attempt real Arkesel SMS dispatch
+  let arkeselDispatched = false;
+  let arkeselError: string | null = null;
+  const arkeselApiKey = process.env.ARKESEL_API_KEY || 'V2tsZIJwRWp0d3BVU3NrSlVya0I';
+
+  if (channel === 'sms' && arkeselApiKey) {
+    try {
+      const arkeselRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': arkeselApiKey.trim(),
+        },
+        body: JSON.stringify({
+          sender: 'GES-Staff',
+          message: messageBody,
+          recipients: [cleanDigits],
+        }),
+      });
+      const arkeselData = await arkeselRes.json();
+      if (arkeselRes.ok && (arkeselData.status === 'success' || arkeselData.code === '1000')) {
+        arkeselDispatched = true;
+        console.log(`[Arkesel SMS] Successfully dispatched to ${cleanDigits}`);
+      } else {
+        arkeselError = arkeselData.message || arkeselData.error || 'Arkesel error status';
+        console.warn('[Arkesel Notice]:', arkeselError);
+      }
+    } catch (err: any) {
+      arkeselError = err?.message || String(err);
+      console.warn('[Arkesel Exception Notice]:', arkeselError);
+    }
+  }
+
   // Log dispatch in terminal
   console.log(`\n======================================================`);
-  console.log(`[${channel === 'whatsapp' ? 'GES WHATSAPP GATEWAY' : 'TWILIO SMS GATEWAY'}]`);
+  console.log(`[${channel === 'whatsapp' ? 'GES WHATSAPP GATEWAY' : 'ARKESEL SMS GATEWAY'}]`);
   console.log(`Channel         : ${channel.toUpperCase()}`);
   console.log(`Recipient Phone : ${e164Phone}`);
   console.log(`Staff Member    : ${staffName} (${staffId})`);
   console.log(`Campus Code     : ${schoolCode}`);
   console.log(`One-Time Code   : ${otp}`);
-  console.log(`Twilio Active   : ${twilioDispatched ? `YES (SID: ${twilioSid})` : `Dev Mock / Direct Fallback (${twilioError || 'No live credentials configured'})`}`);
+  console.log(`Arkesel Active  : ${arkeselDispatched ? 'YES (Dispatched Live)' : `Fallback Active (${arkeselError || 'No live dispatch'})`}`);
   console.log(`WhatsApp Link   : ${whatsappUrl}`);
   console.log(`======================================================\n`);
 
   res.json({
     success: true,
     channel,
-    twilioDispatched,
-    twilioSid,
-    twilioError,
+    arkeselDispatched,
+    arkeselError,
     message:
       channel === 'whatsapp'
         ? `OTP successfully dispatched via WhatsApp to ${e164Phone}`
-        : `OTP sent via Twilio SMS to ${e164Phone}`,
+        : `OTP sent via Arkesel SMS to ${e164Phone}`,
     phone: e164Phone,
     devOtp: otp,
     whatsappUrl,

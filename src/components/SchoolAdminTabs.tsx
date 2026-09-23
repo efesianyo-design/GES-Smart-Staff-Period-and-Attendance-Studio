@@ -1040,7 +1040,7 @@ export const PresenceTrackingTab: React.FC<{ config: SchoolConfig }> = ({ config
 };
 
 // =========================================================================
-// 5. MESSAGES / TWILIO SMS BROADCAST TAB
+// 5. MESSAGES / SMS BROADCAST TAB
 // =========================================================================
 export const MessagesBroadcastTab: React.FC<{ config: SchoolConfig }> = ({ config }) => {
   const [recipientGroup, setRecipientGroup] = useState('all_staff');
@@ -1051,7 +1051,7 @@ export const MessagesBroadcastTab: React.FC<{ config: SchoolConfig }> = ({ confi
 
   const handleSendSMS = () => {
     soundSynthesizer.playScanBeep();
-    setDispatchStatus('Dispatched SMS via Twilio to 48 registered staff contacts.');
+    setDispatchStatus('Dispatched SMS securely to 48 registered staff contacts.');
     setTimeout(() => setDispatchStatus(null), 5000);
   };
 
@@ -1063,7 +1063,7 @@ export const MessagesBroadcastTab: React.FC<{ config: SchoolConfig }> = ({ confi
           <span>Staff SMS &amp; Emergency Broadcast Dispatch</span>
         </h2>
         <p className="text-xs text-slate-500 font-medium">
-          Broadcast SMS messages directly to staff phones using the integrated Twilio gateway
+          Broadcast SMS messages directly to staff phones using the GES secure SMS gateway
         </p>
       </div>
 

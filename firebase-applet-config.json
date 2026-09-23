@@ -1,12 +1,12 @@
 {
-  "projectId": "optimal-philosophy-vdtd0",
-  "appId": "1:979950758741:web:3ce3d70d383ef8f9db9ddc",
-  "apiKey": "AIzaSyC767bQpAuJxWuyDs3pOvA4jcX-0WlNNOc",
-  "authDomain": "optimal-philosophy-vdtd0.firebaseapp.com",
+  "projectId": "ges-attendance-ghana",
+  "appId": "1:769960191233:web:3a1bbb62cb68a849a2e700",
+  "apiKey": "AIzaSyDSjn8RtOxXy0fr4W8sD71jfN2toLQclpc",
+  "authDomain": "ges-attendance-ghana.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-gessmartstaffper-e047f606-ea10-48a8-98ff-9754228861f7",
-  "storageBucket": "optimal-philosophy-vdtd0.firebasestorage.app",
-  "messagingSenderId": "979950758741",
-  "measurementId": "",
-  "oAuthClientId": "979950758741-o294jf9c9n6t1lsn706u3i3d4viqodpl.apps.googleusercontent.com",
+  "storageBucket": "ges-attendance-ghana.firebasestorage.app",
+  "messagingSenderId": "769960191233",
+  "measurementId": "G-C7CZV3LKBE",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

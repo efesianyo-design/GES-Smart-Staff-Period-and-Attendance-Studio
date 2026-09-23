@@ -1,18 +1,19 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Phone, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Phone, CheckCircle2, AlertTriangle, RefreshCw, Key } from 'lucide-react';
 import { soundSynthesizer } from '../utils/audio';
 
-interface FirebasePhoneAuthBoxProps {
+interface ArkeselPhoneAuthBoxProps {
   staffPhone?: string;
   staffName?: string;
   onVerified: () => void;
 }
 
-export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
+export const ArkeselPhoneAuthBox: React.FC<ArkeselPhoneAuthBoxProps> = ({
   staffPhone = '+233248793773',
   staffName = 'Kwame Amponsah',
   onVerified,
 }) => {
+  const [apiKey, setApiKey] = useState<string>(localStorage.getItem('GES_ARKESEL_API_KEY') || '');
   const [phoneNumber, setPhoneNumber] = useState<string>(staffPhone);
   const [step, setStep] = useState<'phone' | 'otp' | 'success'>('phone');
   const [otpInput, setOtpInput] = useState<string>('');
@@ -21,40 +22,57 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  const handleSendSms = async () => {
+  const handleSaveApiKey = (key: string) => {
+    setApiKey(key);
+    localStorage.setItem('GES_ARKESEL_API_KEY', key);
+  };
+
+  const handleSendArkeselSms = async () => {
     setErrorMsg(null);
     setLoading(true);
     soundSynthesizer.playKeypadBeep();
 
+    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber.replace('+', '') : `233${phoneNumber.replace(/^0/, '')}`;
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    setGeneratedOtp(otp);
+
     try {
-      const response = await fetch('/api/auth/send-otp', {
+      if (!apiKey || apiKey.trim().length < 10) {
+        // Fallback simulation mode
+        setStep('otp');
+        setSuccessMsg(`ℹ️ Arkesel API key not provided. Running in simulation mode (Demo OTP: ${otp}).`);
+        soundSynthesizer.playScanBeep();
+        setLoading(false);
+        return;
+      }
+
+      // Call Arkesel SMS API V2
+      const response = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey.trim(),
+        },
         body: JSON.stringify({
-          staffId: 'GES-T-0428',
-          phone: phoneNumber,
-          staffName,
-          schoolCode: 'PREMPEH01',
-          channel: 'sms',
+          sender: 'GES-Staff',
+          message: `Ghana Education Service (GES) Attendance: Your 2FA OTP code is ${otp}. Valid for 5 minutes.`,
+          recipients: [formattedPhone],
         }),
       });
 
       const data = await response.json();
-      if (data.success) {
-        if (data.devOtp) {
-          setGeneratedOtp(data.devOtp);
-        }
+      if (response.ok || data.status === 'success') {
         setStep('otp');
-        setSuccessMsg(`🚀 Arkesel SMS OTP dispatched to ${phoneNumber}! (Demo code: ${data.devOtp || '4826'})`);
+        setSuccessMsg(`🚀 Arkesel SMS successfully dispatched to +${formattedPhone}!`);
         soundSynthesizer.playScanBeep();
       } else {
-        throw new Error(data.message || 'Failed to dispatch SMS.');
+        throw new Error(data.message || 'Failed to dispatch via Arkesel SMS gateway.');
       }
     } catch (err: any) {
-      console.warn('SMS gateway notice:', err);
-      // Fallback
+      console.warn('Arkesel SMS dispatch notice:', err);
+      // Fallback grace
       setStep('otp');
-      setSuccessMsg(`⚠️ Live SMS dispatch notice. Demo OTP active: 4826`);
+      setSuccessMsg(`⚠️ Arkesel network notice. Fallback active (Demo OTP: ${otp}).`);
       soundSynthesizer.playScanBeep();
     } finally {
       setLoading(false);
@@ -73,7 +91,7 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
         onVerified();
       }, 1000);
     } else {
-      setErrorMsg('Invalid verification code. Please check your SMS or use demo code 4826.');
+      setErrorMsg('Invalid verification code. Please check your Arkesel SMS or use demo code 4826.');
       soundSynthesizer.playOutOfBoundsBuzzer();
     }
   };
@@ -84,16 +102,30 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
-            GES Staff 2FA (Arkesel SMS Gateway)
+            Arkesel SMS Gateway (Ghana 2FA)
           </span>
         </div>
-        <span className="text-[10px] font-mono text-slate-400">Secure Live SMS</span>
+        <span className="text-[10px] font-mono text-slate-400">Arkesel SMS v2 API</span>
+      </div>
+
+      {/* API Key configuration */}
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+          <Key className="w-3 h-3 text-amber-400" /> Arkesel API Key
+        </label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => handleSaveApiKey(e.target.value)}
+          placeholder="Paste your Arkesel API key here..."
+          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl text-xs font-mono text-white outline-hidden"
+        />
       </div>
 
       {step === 'phone' && (
         <div className="space-y-3">
           <p className="text-xs text-slate-300">
-            Send real SMS verification code to <strong className="text-white">{staffName}</strong>'s personal handset:
+            Verify mobile identity for <strong className="text-white">{staffName}</strong> via Arkesel SMS:
           </p>
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -107,7 +139,7 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
               />
             </div>
             <button
-              onClick={handleSendSms}
+              onClick={handleSendArkeselSms}
               disabled={loading}
               className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 shrink-0 cursor-pointer"
             >
@@ -121,8 +153,8 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
       {step === 'otp' && (
         <div className="space-y-3">
           <div className="p-2.5 bg-emerald-950/40 border border-emerald-800/80 rounded-xl flex items-center justify-between text-xs text-emerald-300">
-            <span>OTP sent to <strong className="font-mono">{phoneNumber}</strong></span>
-            <button onClick={() => setStep('phone')} className="text-[10px] underline text-emerald-400 hover:text-white">Change Number</button>
+            <span>Code sent to <strong className="font-mono">{phoneNumber}</strong></span>
+            <button onClick={() => setStep('phone')} className="text-[10px] underline text-emerald-400 hover:text-white">Change</button>
           </div>
           <div className="flex gap-2">
             <input
@@ -130,7 +162,7 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
               maxLength={6}
               value={otpInput}
               onChange={(e) => setOtpInput(e.target.value)}
-              placeholder="Enter 4-digit OTP (e.g. 4826)"
+              placeholder="Enter 4-digit code (e.g. 4826)"
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl text-xs font-mono tracking-widest text-white text-center outline-hidden"
             />
             <button
@@ -143,7 +175,7 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
           </div>
           <div className="flex justify-between items-center text-[10px] text-slate-400">
             <span>Demo Quick Code: <strong className="text-yellow-400 font-mono">4826</strong></span>
-            <button onClick={handleSendSms} className="hover:text-white underline">Resend SMS</button>
+            <button onClick={handleSendArkeselSms} className="hover:text-white underline">Resend SMS</button>
           </div>
         </div>
       )}
@@ -153,7 +185,7 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           <div>
             <p className="font-bold">Staff Identity Verified!</p>
-            <p className="text-[11px] text-emerald-300">Proceeding to secure attendance recording...</p>
+            <p className="text-[11px] text-emerald-300">Proceeding to secure geofenced attendance recording...</p>
           </div>
         </div>
       )}

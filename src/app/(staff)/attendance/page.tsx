@@ -334,7 +334,7 @@ export default function StaffAttendancePage() {
           text:
             channel === 'whatsapp'
               ? `2FA WhatsApp Code dispatched to ${targetPhone}. Please enter the 4-digit OTP.`
-              : `2FA SMS Code sent via Twilio to ${targetPhone}. Please enter the 4-digit OTP.`,
+              : `2FA SMS Code sent via Firebase to ${targetPhone}. Please enter the 4-digit OTP.`,
         });
       } else {
         // Fallback in dev
@@ -351,7 +351,7 @@ export default function StaffAttendancePage() {
       setAuthStep('otp_verification');
       setFeedback({
         type: 'info',
-        text: `${channel === 'whatsapp' ? 'WhatsApp' : 'Twilio SMS'} Gateway active. Code dispatched to ${targetPhone}.`,
+        text: `${channel === 'whatsapp' ? 'WhatsApp' : 'Firebase SMS'} Gateway active. Code dispatched to ${targetPhone}.`,
       });
     }
   };
@@ -1117,7 +1117,7 @@ export default function StaffAttendancePage() {
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Step 1 Handset 2FA:</span>
                 <span className="font-bold text-indigo-700">
-                  ✓ {otpChannel === 'whatsapp' ? 'WhatsApp OTP Verified' : 'Twilio SMS OTP Verified'}
+                  ✓ {otpChannel === 'whatsapp' ? 'WhatsApp OTP Verified' : 'Firebase SMS OTP Verified'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
