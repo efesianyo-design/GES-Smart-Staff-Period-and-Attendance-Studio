@@ -3,7 +3,6 @@ import path from 'path';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
-import twilio from 'twilio';
 
 dotenv.config();
 
@@ -11,25 +10,6 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
-
-// Lazy initialization of Twilio client
-let twilioClient: twilio.Twilio | null = null;
-function getTwilioClient(): twilio.Twilio | null {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken || accountSid.trim() === '' || authToken.trim() === '') {
-    return null;
-  }
-  if (!twilioClient) {
-    try {
-      twilioClient = twilio(accountSid.trim(), authToken.trim());
-    } catch (err) {
-      console.error('[Twilio Init Error]:', err);
-      return null;
-    }
-  }
-  return twilioClient;
-}
 
 // 2FA SMS OTP in-memory store & lockout management
 interface OtpEntry {
@@ -326,83 +306,26 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const messageBody = `Ghana Education Service (GES) Attendance Verification: Your 4-digit 2FA OTP code is ${otp}. Valid for 5 minutes. Do not share.`;
   const whatsappUrl = `https://wa.me/${cleanDigits}?text=${encodeURIComponent(messageBody)}`;
 
-  // Attempt real Twilio dispatch if configured
-  const client = getTwilioClient();
-  const serviceSid = process.env.TWILIO_SERVICE_SID;
-  const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-  const twilioWhatsApp = process.env.TWILIO_WHATSAPP_NUMBER || twilioPhone;
-
-  let twilioDispatched = false;
-  let twilioSid: string | undefined;
-  let twilioError: string | null = null;
-
-  if (client) {
-    if (serviceSid) {
-      try {
-        const verification = await client.verify.v2
-          .services(serviceSid)
-          .verifications.create({
-            to: e164Phone,
-            channel: channel === 'whatsapp' ? 'whatsapp' : 'sms',
-          });
-        twilioSid = verification.sid;
-        twilioDispatched = true;
-        console.log(`[Twilio Verify] Created verification for ${e164Phone}: SID ${verification.sid}, Status: ${verification.status}`);
-      } catch (err: any) {
-        twilioError = err?.message || String(err);
-        console.error('[Twilio Verify Error]:', twilioError);
-      }
-    }
-
-    if (!twilioDispatched && (twilioPhone || twilioWhatsApp)) {
-      try {
-        const fromNumber =
-          channel === 'whatsapp'
-            ? twilioWhatsApp?.startsWith('whatsapp:')
-              ? twilioWhatsApp
-              : `whatsapp:${twilioWhatsApp}`
-            : twilioPhone;
-        const toNumber =
-          channel === 'whatsapp'
-            ? e164Phone.startsWith('whatsapp:')
-              ? e164Phone
-              : `whatsapp:${e164Phone}`
-            : e164Phone;
-
-        if (fromNumber) {
-          const msg = await client.messages.create({
-            body: messageBody,
-            from: fromNumber,
-            to: toNumber,
-          });
-          twilioSid = msg.sid;
-          twilioDispatched = true;
-          console.log(`[Twilio Messages] Sent message to ${toNumber}: SID ${msg.sid}, Status: ${msg.status}`);
-        }
-      } catch (err: any) {
-        twilioError = err?.message || String(err);
-        console.error('[Twilio Messages Error]:', twilioError);
-      }
-    }
-  }
-
   // Attempt real Arkesel SMS dispatch
   let arkeselDispatched = false;
   let arkeselError: string | null = null;
-  const arkeselApiKey = process.env.ARKESEL_API_KEY || 'V2tsZIJwRWp0d3BVU3NrSlVya0I';
+  const arkeselApiKey = process.env.ARKESEL_API_KEY;
 
   if (channel === 'sms' && arkeselApiKey) {
     try {
-      const arkeselRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
+      const arkeselRes = await fetch('https://sms.arkesel.com/api/v2/otp/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'api-key': arkeselApiKey.trim(),
         },
         body: JSON.stringify({
-          sender: 'GES-Staff',
-          message: messageBody,
-          recipients: [cleanDigits],
+          expiry: 5,
+          length: 4,
+          medium: 'sms',
+          sender_id: 'GES-Staff',
+          message: `Ghana Education Service (GES) Attendance Verification: Your 4-digit 2FA OTP code is %otp_code%. Valid for 5 minutes. Do not share.`,
+          phone_number: e164Phone,
         }),
       });
       const arkeselData = await arkeselRes.json();
@@ -493,27 +416,10 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     });
   }
 
-  // Validate OTP (matches Twilio Verify service, generated OTP, or test code '4826')
+  // Validate OTP (matches generated OTP, or test code '4826')
   const cleanInput = String(otp || '').trim();
-  let isTwilioApproved = false;
-  const client = getTwilioClient();
-  const serviceSid = process.env.TWILIO_SERVICE_SID;
-  if (client && serviceSid) {
-    try {
-      const e164Phone = normalizeGhanaPhone(activeRecord.phone || phone);
-      const check = await client.verify.v2.services(serviceSid).verificationChecks.create({
-        to: e164Phone,
-        code: cleanInput,
-      });
-      if (check.status === 'approved') {
-        isTwilioApproved = true;
-      }
-    } catch (err: any) {
-      console.warn('[Twilio Verify Check Notice]:', err?.message || err);
-    }
-  }
 
-  const isMatch = isTwilioApproved || cleanInput === activeRecord.otp || cleanInput === '4826';
+  const isMatch = cleanInput === activeRecord.otp || cleanInput === '4826';
 
   if (!isMatch) {
     activeRecord.attempts += 1;
