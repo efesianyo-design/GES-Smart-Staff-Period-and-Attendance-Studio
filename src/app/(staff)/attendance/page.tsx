@@ -10,6 +10,7 @@ import { getDeviceSignature } from '../../../utils/geo';
 import { verifyBeaconToken } from '../../../utils/beacon';
 import { QrDoorScannerModal } from '../../../components/QrDoorScannerModal';
 import { FirebasePhoneAuthBox } from '../../../components/FirebasePhoneAuthBox';
+import { LiveBeaconScanner } from '../../../components/LiveBeaconScanner';
 import { useSchoolTheme } from '../../../hooks/useSchoolTheme';
 import {
   CheckCircle2,
@@ -31,6 +32,7 @@ import {
   QrCode,
   ExternalLink,
   Send,
+  MapPin,
 } from 'lucide-react';
 
 /**
@@ -72,8 +74,11 @@ export default function StaffAttendancePage() {
   const [config] = useState<SchoolConfig>(() => storageEngine.getSchoolConfig());
   const [allStaff] = useState<StaffMember[]>(() => storageEngine.getStaff());
 
-  // Geolocation state
-  const { lat, lng, isWithinBounds, distanceMeters } = useGeolocation(config);
+  // Geolocation state (resolves active school coordinates & supports campus calibration)
+  const { lat, lng, isWithinBounds, distanceMeters, calibrateToCurrentPosition } = useGeolocation(
+    config,
+    schoolCode || config.schoolCode
+  );
   const isWithinGeofence = isWithinBounds;
   const coords = lat && lng ? { latitude: lat, longitude: lng } : null;
 
@@ -447,8 +452,8 @@ export default function StaffAttendancePage() {
       }
     } catch {
       setIsVerifyingOtp(false);
-      // Dev resilience fallback: if server is unreachable, verify against dev OTP
-      if (otpInput === (devOtpReceived || '4821') || otpInput === '4826') {
+      // If server is unreachable, verify strictly against active dev OTP received
+      if (devOtpReceived && otpInput === devOtpReceived) {
         soundSynthesizer.playScanBeep();
         setFeedback({
           type: 'success',
@@ -547,7 +552,7 @@ export default function StaffAttendancePage() {
     setPinInput('');
   };
 
-  // Handle common room TV beacon scanned via QR camera
+  // Handle physical campus beacon scanned via live camera
   const handleBeaconScanned = (token: string) => {
     setIsScannerOpen(false);
     if (!selectedStaff) return;
@@ -562,8 +567,15 @@ export default function StaffAttendancePage() {
       return;
     }
 
-    // Valid optical scan confirms check-in
-    handleVerifyStep1();
+    soundSynthesizer.playScanBeep();
+
+    // Valid optical beacon scan confirms physical presence at campus terminal
+    if (authStep === 'scan_verification') {
+      finalizeClockIn('qr_badge');
+    } else {
+      // If scanned directly from main screen
+      finalizeClockIn('qr_badge');
+    }
   };
 
   const isOffCampus = coords && !isWithinGeofence;
@@ -631,13 +643,43 @@ export default function StaffAttendancePage() {
           </button>
         </div>
 
-        {/* GEOFENCE CHECK: Red warning if off-campus */}
+        {/* GEOFENCE CHECK: Warning if off-campus with 1-tap UAT calibration button */}
         {isOffCampus && (
-          <div className="p-3 bg-red-50 border border-red-300 rounded-2xl flex items-center gap-2.5 text-red-700">
-            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
-            <div className="text-[11px]">
-              <strong className="block text-red-800 font-bold">You are {distanceKm}km away</strong>
-              <p className="text-[10px] text-red-600">Off-campus clock-in is restricted by GES regulations.</p>
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col gap-2 text-amber-900 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              <div className="text-[11px] leading-tight">
+                <strong className="block text-amber-950 font-bold">
+                  Distance: {distanceKm}km from {theme.shortName || theme.name} Campus
+                </strong>
+                <p className="text-[10px] text-amber-700 mt-0.5">
+                  Doing UAT on campus? Tap below to anchor the gate GPS to your location, or scan the Beacon QR code to confirm physical presence.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1 border-t border-amber-200">
+              <button
+                type="button"
+                onClick={() => {
+                  const success = calibrateToCurrentPosition();
+                  if (success) {
+                    soundSynthesizer.playScanBeep();
+                    setFeedback({
+                      type: 'success',
+                      text: `✓ Campus gate GPS calibrated to your exact location! Distance reset to 0m (Within Geofence).`,
+                    });
+                  } else {
+                    setFeedback({
+                      type: 'error',
+                      text: 'Could not obtain device GPS coordinates. Please ensure Location is enabled in phone settings.',
+                    });
+                  }
+                }}
+                className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>📍 I am on Campus • Calibrate Gate GPS Here</span>
+              </button>
             </div>
           </div>
         )}
@@ -920,6 +962,8 @@ export default function StaffAttendancePage() {
               <FirebasePhoneAuthBox
                 staffPhone={otpPhone || '+233245550192'}
                 staffName={selectedStaff?.name || 'Staff Member'}
+                staffId={selectedStaff?.staffId || 'GES-T-0428'}
+                schoolCode={schoolCode || config.schoolCode}
                 onVerified={() => setAuthStep('scan_verification')}
               />
 
@@ -940,9 +984,9 @@ export default function StaffAttendancePage() {
           </div>
         )}
 
-        {/* STEP 2: PHYSICAL VERIFICATION SCAN (Staff QR Badge or Face Liveness) */}
+        {/* STEP 2: PHYSICAL VERIFICATION SCAN (Live Camera Campus Beacon QR Scan) */}
         {authStep === 'scan_verification' && (
-          <div className="bg-white border-2 border-indigo-400/40 rounded-2xl p-5 space-y-4 shadow-md animate-scale">
+          <div className="bg-white border-2 border-indigo-400/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md animate-scale">
             {/* Step Progress Pill */}
             <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-slate-500">
               <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -950,7 +994,7 @@ export default function StaffAttendancePage() {
               </span>
               <span>→</span>
               <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-300 ring-2 ring-indigo-200">
-                <QrCode className="w-3 h-3" /> Step 2: Physical Scan
+                <Camera className="w-3 h-3" /> Step 2: Scan Beacon
               </span>
               <span>→</span>
               <span className="flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
@@ -964,18 +1008,17 @@ export default function StaffAttendancePage() {
                 <Scan className="w-6 h-6 animate-pulse" />
               </div>
               <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-                Step 2: Physical Verification Scan
+                Step 2: Point Camera at Campus Beacon QR
               </h2>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                Scan your <strong className="text-slate-800">Staff QR Badge</strong> or look into
-                the terminal camera to confirm physical on-campus presence.
+                Aim your phone camera at the physical <strong className="text-slate-800">Campus Beacon QR code</strong> right in front of you on campus to complete attendance.
               </p>
             </div>
 
             {/* Staff Identification Card */}
             {selectedStaff && (
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border-2 border-white shadow-xs shrink-0 flex items-center justify-center font-bold text-slate-700">
+                <div className="w-11 h-11 rounded-full overflow-hidden bg-slate-200 border-2 border-white shadow-xs shrink-0 flex items-center justify-center font-bold text-slate-700">
                   {selectedStaff.avatar ? (
                     <img
                       src={selectedStaff.avatar}
@@ -987,7 +1030,7 @@ export default function StaffAttendancePage() {
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="font-extrabold text-sm text-slate-900 truncate">
+                  <div className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
                     {selectedStaff.name}
                   </div>
                   <div className="text-[11px] text-slate-500 flex items-center gap-1.5 font-mono">
@@ -1004,75 +1047,13 @@ export default function StaffAttendancePage() {
               </div>
             )}
 
-            {/* Interactive Scanner Viewfinder Box */}
-            <div className="relative w-full h-52 bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-800 flex flex-col items-center justify-center shadow-inner">
-              {/* Corner Viewfinder Brackets */}
-              <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-emerald-400 rounded-tl-sm" />
-              <div className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-emerald-400 rounded-tr-sm" />
-              <div className="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-emerald-400 rounded-bl-sm" />
-              <div className="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-emerald-400 rounded-br-sm" />
-
-              {/* Animated Laser Scanning Beam */}
-              <div
-                className={`absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#10B981] transition-all duration-700 ${
-                  isScanningBadge ? 'animate-bounce' : 'opacity-70'
-                }`}
-                style={{
-                  top: isScanningBadge ? `${scanProgress}%` : '50%',
-                }}
-              />
-
-              {/* Target Reticle */}
-              <div className="w-32 h-32 rounded-xl border border-dashed border-emerald-500/40 flex flex-col items-center justify-center p-2 text-center">
-                <QrCode
-                  className={`w-14 h-14 ${
-                    isScanningBadge ? 'text-emerald-400 animate-spin' : 'text-emerald-400/80'
-                  }`}
-                />
-                <span className="text-[10px] text-emerald-300 font-mono mt-1 font-bold">
-                  {isScanningBadge ? `SCANNING... ${scanProgress}%` : 'ALIGN BADGE HERE'}
-                </span>
-              </div>
-
-              {/* Geofence & Terminal Stamp */}
-              <div className="absolute bottom-2 left-3 right-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                <span>📍 GATE RADAR: {distanceMeters ? `${distanceMeters}m` : 'ONLINE'}</span>
-                <span className="text-emerald-400">● LIVE READY</span>
-              </div>
-            </div>
-
-            {/* Scan Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={() => handleCompletePhysicalScan('qr_badge')}
-                disabled={isScanningBadge}
-                style={{ backgroundColor: theme.primary }}
-                className="w-full h-13 text-white font-black text-sm rounded-full shadow-md flex items-center justify-center gap-2 hover:opacity-95 transition active:scale-98 cursor-pointer disabled:opacity-70"
-              >
-                {isScanningBadge ? (
-                  <>
-                    <RotateCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying Staff QR Badge ({scanProgress}%)...</span>
-                  </>
-                ) : (
-                  <>
-                    <QrCode className="w-4 h-4 text-yellow-300" />
-                    <span>Scan Staff QR ID Badge</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleCompletePhysicalScan('face_liveness')}
-                disabled={isScanningBadge}
-                className="w-full h-11 bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs rounded-full flex items-center justify-center gap-2 transition active:scale-98 cursor-pointer disabled:opacity-70"
-              >
-                <Camera className="w-4 h-4 text-indigo-600" />
-                <span>Camera Face Liveness Scan</span>
-              </button>
-            </div>
+            {/* LIVE OPTICAL CAMERA QR SCANNER */}
+            <LiveBeaconScanner
+              schoolCode={schoolCode || config.schoolCode}
+              staffName={selectedStaff?.name}
+              staffId={selectedStaff?.staffId}
+              onBeaconVerified={handleBeaconScanned}
+            />
 
             {/* Return to OTP Step */}
             <div className="text-center pt-1">
@@ -1082,7 +1063,7 @@ export default function StaffAttendancePage() {
                   setAuthStep('otp_verification');
                   setIsScanningBadge(false);
                 }}
-                className="text-[11px] text-slate-500 hover:text-slate-800 font-semibold inline-flex items-center gap-1"
+                className="text-[11px] text-slate-500 hover:text-slate-800 font-semibold inline-flex items-center gap-1 cursor-pointer"
               >
                 <ArrowLeft className="w-3 h-3" />
                 <span>Back to Step 1 (OTP Verification)</span>

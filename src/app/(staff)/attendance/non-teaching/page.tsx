@@ -26,7 +26,7 @@ export default function NonTeachingAttendancePage() {
   const navigate = useNavigate();
   const { theme, schoolCode } = useSchoolTheme();
   const [config] = useState<SchoolConfig>(() => storageEngine.getSchoolConfig());
-  const geo = useGeolocation(config);
+  const geo = useGeolocation(config, schoolCode);
 
   const [staffList] = useState<NonTeachingStaffMember[]>(() => storageEngine.getNonTeachingStaff());
   const [selectedStaff, setSelectedStaff] = useState<NonTeachingStaffMember | null>(null);
@@ -184,13 +184,38 @@ export default function NonTeachingAttendancePage() {
           </div>
         </div>
 
-        {/* GEOFENCE CHECK: Red warning if off-campus */}
+        {/* GEOFENCE CHECK: Warning if off-campus */}
         {isOffCampus && (
-          <div className="p-3 bg-red-50 border border-red-300 rounded-2xl flex items-center gap-2.5 text-red-700">
-            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
-            <div className="text-[11px]">
-              <strong>You are {distanceKm}km away from campus.</strong>
-              <p className="text-[10px] text-red-600">Please clock in at school grounds.</p>
+          <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col gap-2 text-amber-900 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              <div className="text-[11px] leading-tight">
+                <strong className="block text-amber-950 font-bold">
+                  Distance: {distanceKm}km from {theme.shortName || theme.name} Campus
+                </strong>
+                <p className="text-[10px] text-amber-700 mt-0.5">
+                  Doing UAT on campus? Tap below to anchor the gate GPS to your location.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1 border-t border-amber-200">
+              <button
+                type="button"
+                onClick={() => {
+                  const success = geo.calibrateToCurrentPosition();
+                  if (success) {
+                    soundSynthesizer.playScanBeep();
+                    setFeedback({
+                      type: 'success',
+                      text: `✓ Campus gate calibrated to your location! Distance reset to 0m.`,
+                    });
+                  }
+                }}
+                className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>📍 I am on Campus • Calibrate Gate GPS Here</span>
+              </button>
             </div>
           </div>
         )}

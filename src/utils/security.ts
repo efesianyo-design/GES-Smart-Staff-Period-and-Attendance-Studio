@@ -16,9 +16,12 @@ export interface SecurityIncident {
     | 'multiple_failed_otp'
     | 'invalid_beacon_replay'
     | 'unauthorized_admin_attempt'
-    | 'rate_limit_lockout';
+    | 'rate_limit_lockout'
+    | 'critical_tardiness'
+    | 'teacher_late_arrival'
+    | 'early_departure';
   details: string;
-  severity: 'medium' | 'high' | 'critical';
+  severity: 'medium' | 'high' | 'critical' | 'warning';
   deviceSignature: string;
   ipAddress?: string;
   coordinates?: { lat: number; lng: number };

@@ -197,7 +197,7 @@ export interface NonTeachingAttendanceRecord {
   clockInTimestamp: number;
   clockOutTime?: string;
   clockOutTimestamp?: number;
-  method: 'kiosk_touch' | 'pin_pad' | 'barcode_card_scan' | 'sms_yam_phone' | 'supervisor_rollcall';
+  method: 'kiosk_touch' | 'pin_pad' | 'barcode_card_scan' | 'sms_yam_phone' | 'supervisor_rollcall' | 'firebase_phone_auth';
   shift: ShiftType;
   punctualityStatus: PunctualityStatus;
   verifiedBy?: string;

@@ -23,6 +23,7 @@ import {
 import { AppMode, DeviceOperatingMode } from '../types';
 import { soundSynthesizer } from '../utils/audio';
 import { PWAInstallButton } from './PWAInstallButton';
+import { OfflineSyncBadge } from './OfflineSyncBadge';
 import { PortalType } from '../utils/routes';
 
 interface NavigationRibbonProps {
@@ -187,6 +188,9 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
               </button>
             </div>
           )}
+
+          {/* Network Offline Queue & Sync Status Badge */}
+          <OfflineSyncBadge />
 
           {/* Sound Toggle */}
           <button

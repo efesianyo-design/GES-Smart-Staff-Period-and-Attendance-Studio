@@ -32,6 +32,7 @@ import {
   Share2,
   Link2,
   ShieldAlert,
+  KeyRound,
 } from 'lucide-react';
 import {
   Classroom,
@@ -49,6 +50,8 @@ import { soundSynthesizer } from '../utils/audio';
 import { getTodayDateString } from '../utils/storage';
 import { UnclockReasonModal } from './UnclockReasonModal';
 import { PortalLinksShareModal } from './PortalLinksShareModal';
+import { ArkeselBalanceGuardCard } from './ArkeselBalanceGuardCard';
+import { HeadmasterOverrideModal } from './HeadmasterOverrideModal';
 import { PortalType } from '../utils/routes';
 
 interface AdminReportsModeProps {
@@ -93,6 +96,7 @@ export const AdminReportsMode: React.FC<AdminReportsModeProps> = ({
     recordType: 'gate',
   });
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [unclockFeedback, setUnclockFeedback] = useState<string | null>(null);
 
   // Filter records based on selected range
@@ -411,9 +415,21 @@ export const AdminReportsMode: React.FC<AdminReportsModeProps> = ({
               <Link2 className="w-4 h-4 text-emerald-400" />
               <span>Share Portal Links</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setIsOverrideModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-white font-bold text-xs flex items-center gap-1.5 border border-amber-500/40 shadow-sm transition cursor-pointer"
+              title="Generate a 10-minute dynamic Headmaster Emergency Override PIN for teachers"
+            >
+              <KeyRound className="w-4 h-4 text-amber-400" />
+              <span>10-Min Override PIN</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Arkesel Daily Balance Guard Component */}
+      <ArkeselBalanceGuardCard schoolName={config.schoolName} />
 
       {/* Unclock Administrative Feedback Banner */}
       {unclockFeedback && (
@@ -1350,6 +1366,13 @@ export const AdminReportsMode: React.FC<AdminReportsModeProps> = ({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         onNavigateToPortal={(portal) => onNavigateToPortal?.(portal)}
+      />
+
+      {/* Headmaster Emergency 2FA Override PIN Modal */}
+      <HeadmasterOverrideModal
+        isOpen={isOverrideModalOpen}
+        onClose={() => setIsOverrideModalOpen(false)}
+        schoolCode={config.schoolCode}
       />
     </div>
   );

@@ -55,6 +55,120 @@ export function getDeviceSignature(): string {
 }
 
 /**
+ * Official Ghana Senior High Schools GPS Coordinates Directory
+ */
+export const OFFICIAL_SCHOOL_COORDINATES: Record<string, { lat: number; lng: number; radiusMeters: number; schoolName: string }> = {
+  MAWULI01: { lat: 6.9167, lng: 0.2833, radiusMeters: 500, schoolName: 'Mawuli Senior High School' },
+  'GES-VR-HO-002': { lat: 6.9167, lng: 0.2833, radiusMeters: 500, schoolName: 'Mawuli Senior High School' },
+  PREMPEH01: { lat: 6.7022, lng: -1.6514, radiusMeters: 600, schoolName: 'Prempeh College' },
+  'GES-AR-KUM-003': { lat: 6.7022, lng: -1.6514, radiusMeters: 600, schoolName: 'Prempeh College' },
+  ACHIMOTA01: { lat: 5.6178, lng: -0.2189, radiusMeters: 600, schoolName: 'Achimota School' },
+  'GES-GAR-ACC-001': { lat: 5.6178, lng: -0.2189, radiusMeters: 600, schoolName: 'Achimota School' },
+  ACCRA_HIGH01: { lat: 5.5600, lng: -0.1900, radiusMeters: 450, schoolName: 'Accra High Secondary School' },
+  OLA_GIRLS01: { lat: 6.6120, lng: 0.4710, radiusMeters: 500, schoolName: 'Our Lady of Apostles Girls SHS' },
+  MFANTSIPIM01: { lat: 5.1167, lng: -1.2500, radiusMeters: 500, schoolName: 'Mfantsipim School' },
+  ADISADEL01: { lat: 5.1278, lng: -1.2856, radiusMeters: 500, schoolName: 'Adisadel College' },
+  WESLEY_GIRLS01: { lat: 5.1278, lng: -1.2644, radiusMeters: 500, schoolName: "Wesley Girls' High School" },
+  'GES-CR-CAP-005': { lat: 5.1278, lng: -1.2644, radiusMeters: 500, schoolName: "Wesley Girls' High School" },
+  TAMASCO01: { lat: 9.4074, lng: -0.8393, radiusMeters: 600, schoolName: 'Tamale Senior High School' },
+  'GES-NR-TAM-004': { lat: 9.4074, lng: -0.8393, radiusMeters: 600, schoolName: 'Tamale Senior High School' },
+  BIAKOYE01: { lat: 7.1500, lng: 0.3500, radiusMeters: 500, schoolName: 'Biakoye Community SHS' },
+  'GES-OR-BIA-006': { lat: 7.1500, lng: 0.3500, radiusMeters: 500, schoolName: 'Biakoye Community SHS' },
+};
+
+export const CALIBRATED_COORDS_EVENT = 'ges_school_coords_calibrated';
+
+/**
+ * Resolves accurate coordinates for a given school code, checking:
+ * 1. Administrator/UAT local calibration for this campus
+ * 2. Official GES SHS GPS database
+ * 3. Custom school directory from localStorage
+ * 4. Fallback school config
+ */
+export function resolveSchoolTargetCoordinates(
+  schoolCode: string,
+  fallbackConfig?: { lat: number; lng: number; radiusMeters?: number }
+): Coordinates & { radiusMeters: number; isCalibrated: boolean; source: string } {
+  const codeKey = (schoolCode || '').toUpperCase().trim();
+
+  // 1. Check if user or school calibrated this campus gate
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(`ges_calibrated_gps_${codeKey}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+          return {
+            lat: parsed.lat,
+            lng: parsed.lng,
+            radiusMeters: parsed.radiusMeters || 600,
+            isCalibrated: true,
+            source: 'UAT Campus Calibration',
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Official database lookup
+  const official = OFFICIAL_SCHOOL_COORDINATES[codeKey];
+  if (official) {
+    return {
+      lat: official.lat,
+      lng: official.lng,
+      radiusMeters: official.radiusMeters,
+      isCalibrated: false,
+      source: 'GES National Registry',
+    };
+  }
+
+  // 3. Fallback to provided config or Mawuli default
+  if (fallbackConfig && typeof fallbackConfig.lat === 'number' && typeof fallbackConfig.lng === 'number') {
+    return {
+      lat: fallbackConfig.lat,
+      lng: fallbackConfig.lng,
+      radiusMeters: fallbackConfig.radiusMeters || 500,
+      isCalibrated: false,
+      source: 'School Config',
+    };
+  }
+
+  return {
+    lat: 6.9167,
+    lng: 0.2833,
+    radiusMeters: 500,
+    isCalibrated: false,
+    source: 'Default',
+  };
+}
+
+/**
+ * Calibrates and anchors campus gate coordinates to user's real GPS position
+ */
+export function calibrateCampusGateGps(
+  schoolCode: string,
+  lat: number,
+  lng: number,
+  radiusMeters: number = 600
+): void {
+  if (typeof window === 'undefined') return;
+  const codeKey = (schoolCode || 'MAWULI01').toUpperCase().trim();
+  const payload = {
+    lat,
+    lng,
+    radiusMeters,
+    calibratedAt: new Date().toISOString(),
+  };
+
+  try {
+    localStorage.setItem(`ges_calibrated_gps_${codeKey}`, JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent(CALIBRATED_COORDS_EVENT, { detail: { schoolCode: codeKey, ...payload } }));
+  } catch (err) {
+    console.warn('Failed to save campus GPS calibration:', err);
+  }
+}
+
+/**
  * Format coordinates for display e.g. "6.9167° N, 0.2833° E"
  */
 export function formatCoordinates(lat: number | null, lng: number | null): string {
