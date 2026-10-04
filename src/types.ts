@@ -4,7 +4,7 @@ export type StaffRole = 'Teacher' | 'HOD' | 'Assistant Head' | 'Headmaster' | 'S
 
 export type StaffPresenceStatus = 'off_campus' | 'on_campus' | 'teaching';
 
-export type StaffCategory = 'permanent' | 'nss' | 'intern' | 'contract';
+export type StaffCategory = 'permanent' | 'nss' | 'intern' | 'contract' | 'volunteer';
 
 export interface StaffMember {
   id: string;
@@ -128,6 +128,106 @@ export interface PeriodTeachingSession {
   isEarlyDeparture?: boolean;
   earlyMinutes?: number;
   punctualityStatus?: 'on_time' | 'late' | 'early_departure' | 'compliant';
+  status?: 'active' | 'completed';
+}
+
+export interface ActiveClassSession {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  teacherStaffId: string;
+  classroomId: string;
+  className: string;
+  classCode: string;
+  isMerged: boolean;
+  mergedClassCodes: string[];
+  mergedClassNames: string[];
+  subject: string;
+  date: string;
+  periodNumber: number;
+  scheduledStartTime: string;
+  scheduledEndTime: string;
+  actualStartTime: string;
+  startTimestamp: number;
+  isLateArrival: boolean;
+  lateMinutes: number;
+  totalRosterCount: number;
+  schoolCode?: string;
+}
+
+export type LeadershipRoleKey =
+  | 'headmaster'
+  | 'asst_academic'
+  | 'asst_domestic'
+  | 'asst_welfare'
+  | 'asst_admin'
+  | 'accountant'
+  | 'senior_housemaster'
+  | 'matron'
+  | 'chief_security'
+  | string;
+
+export interface LeadershipRoleConfig {
+  key: string;
+  title: string; // e.g. "Headmaster / Principal", "Assistant Headmaster (Academic)", "Assistant Headmaster (Domestic)", "Assistant Headmaster (Welfare)"
+  officerName: string;
+  staffId: string;
+  phone?: string;
+  avatarColor: string;
+  scopeDescription: string;
+  supervisedCategories: string[]; // e.g. ['teaching_staff', 'period_tracking', 'academic_departments', 'kitchen', 'dormitories', 'security', 'infirmary', 'counseling']
+  monitoredUnits: string[]; // e.g. ['General Science', 'Business', 'Kitchen', 'Security', 'Health Bay', 'Boarding Houses']
+  canAlterOrganogram?: boolean;
+  reportsToKey?: string;
+  lastActive?: string;
+  division?: 'executive' | 'academic' | 'domestic' | 'welfare' | 'administrative' | 'finance';
+}
+
+export interface OrganogramConfig {
+  schoolCode: string;
+  schoolName: string;
+  lastUpdated: string;
+  roles: LeadershipRoleConfig[];
+  customReportingNotes?: string;
+}
+
+export interface InfirmaryVisitRecord {
+  id: string;
+  studentName: string;
+  classCode: string;
+  houseName: string;
+  complaint: string;
+  admittedAt: string;
+  status: 'admitted' | 'discharged' | 'referred_hospital';
+  nurseOnDuty: string;
+  treatment: string;
+  exeatIssued: boolean;
+}
+
+export interface HouseDormRecord {
+  id: string;
+  houseName: string;
+  housemasterName: string;
+  housemasterStaffId: string;
+  totalBoarders: number;
+  presentTonight: number;
+  onExeatCount: number;
+  inInfirmaryCount: number;
+  musterRollStatus: 'completed' | 'pending' | 'flagged';
+  lastRollCallTime: string;
+}
+
+export interface WelfareCaseRecord {
+  id: string;
+  caseType: 'student_guidance' | 'staff_compassionate' | 'medical_emergency' | 'indigent_support';
+  personName: string;
+  personType: 'student' | 'teaching_staff' | 'non_teaching_staff';
+  departmentOrClass: string;
+  description: string;
+  openedDate: string;
+  status: 'active' | 'in_progress' | 'resolved';
+  officerInCharge: string;
+  urgency: 'low' | 'medium' | 'high' | 'critical';
 }
 
 export interface SchoolConfig {
@@ -141,8 +241,28 @@ export interface SchoolConfig {
   onTimeCutoff: string; // e.g. "07:45"
   lateCutoff: string; // e.g. "08:30"
   closingTime: string; // e.g. "14:30"
+  lessonStartHour: number; // e.g. 6 (6 AM)
+  lessonEndHour: number; // e.g. 17 (5 PM)
   superAdminPin: string; // e.g. "1234"
   logoUrl?: string;
+  principalPassword?: string;
+  asstAcademicPassword?: string;
+  asstDomesticPassword?: string;
+  asstWelfarePassword?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  dateTime: string;
+  schoolCode: string;
+  staffId?: string;
+  staffName?: string;
+  action: string; // e.g. "Login", "Clock In", "Class Entry", "Config Update"
+  category: 'security' | 'attendance' | 'academic' | 'administrative' | 'system';
+  details: string;
+  deviceSignature?: string;
+  status: 'success' | 'failure' | 'warning';
 }
 
 export type AppMode = 'gate_clock' | 'period_tracker' | 'master_roster' | 'non_teaching' | 'admin_reports' | 'super_admin';

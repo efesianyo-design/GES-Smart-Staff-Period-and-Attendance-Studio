@@ -571,6 +571,17 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
 
     onClockIn(record);
     soundSynthesizer.playClockInChime();
+
+    storageEngine.logAudit({
+      staffId: record.staffId,
+      staffName: record.staffName,
+      schoolCode: config.schoolCode,
+      category: 'attendance',
+      status: 'success',
+      action: 'CLOCK_IN',
+      details: `Clocked in at ${record.clockInTime} (${record.punctualityStatus.toUpperCase()}) method: ${record.verificationMethod}`,
+    });
+
     setFeedbackMsg({
       text: `✅ Welcome, ${selectedStaff.name}! 2-Step Identity & Beacon Presence Verified. Clocked in successfully at ${record.clockInTime} (${punctualityEvaluation.label}).`,
       type: 'success',
@@ -606,6 +617,17 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
       reflectionText || 'Completed instructional day according to curriculum.'
     );
     soundSynthesizer.playClockInChime();
+
+    storageEngine.logAudit({
+      staffId: selectedStaff.staffId,
+      staffName: selectedStaff.name,
+      schoolCode: config.schoolCode,
+      category: 'attendance',
+      status: 'success',
+      action: 'CLOCK_OUT',
+      details: `Clocked out from gate terminal. Reflection: ${reflectionText || 'N/A'}`,
+    });
+
     setShowClockOutModal(false);
     setReflectionText('');
     setFeedbackMsg({
@@ -932,9 +954,11 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
                       </div>
                       <input
                         type="text"
+                        pattern="[0-9]*"
+                        inputMode="numeric"
                         value={directIdInput}
                         onChange={(e) => {
-                          const val = e.target.value.trim();
+                          const val = e.target.value.replace(/\D/g, ''); // Enforce numeric only
                           setDirectIdInput(val);
                           // Try to find staff by ID
                           const matched = staffList.find(
@@ -1152,6 +1176,8 @@ export const GateClockMode: React.FC<GateClockModeProps> = ({
             <FirebasePhoneAuthBox
               staffPhone={selectedStaff?.phone || '+233245550192'}
               staffName={selectedStaff?.name || 'Staff Member'}
+              staffId={selectedStaff?.staffId || '1304201'}
+              schoolCode={config.schoolCode}
               onVerified={() => setIsOtpVerified(true)}
             />
           </div>

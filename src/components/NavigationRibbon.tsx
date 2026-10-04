@@ -77,25 +77,7 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
   onOpenDeepLinks,
   onOpenPrivacyPolicy,
 }) => {
-  const [timeString, setTimeString] = useState('');
-  const [dateString, setDateString] = useState('');
   const [isMuted, setIsMuted] = useState(soundSynthesizer.getIsMuted());
-
-  // Live ticking clock
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setTimeString(
-        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
-      setDateString(
-        now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const toggleSound = () => {
     const next = !isMuted;
@@ -255,6 +237,20 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
             )
           )}
 
+          {/* Executive Consoles & Organogram Quick Button */}
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = '/admin?tab=organogram';
+              soundSynthesizer.playScanBeep();
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-yellow-950/80 hover:bg-yellow-900 border border-yellow-500/40 text-yellow-300 hover:text-white text-xs font-semibold transition"
+            title="Principal, Academic, Domestic, Welfare Consoles & Organogram Hierarchy"
+          >
+            <span>👑</span>
+            <span className="hidden md:inline">Leadership Consoles</span>
+          </button>
+
           {/* Deep Links Directory Launcher */}
           {onOpenDeepLinks && (
             <button
@@ -297,14 +293,6 @@ export const NavigationRibbon: React.FC<NavigationRibbonProps> = ({
       <div className="px-3 sm:px-4 py-1.5 flex items-center justify-between gap-3 overflow-x-auto no-scrollbar whitespace-nowrap">
         {/* Live Badges & Quick Filters */}
         <div className="flex items-center gap-2 text-xs flex-shrink-0">
-          {/* Clock Pill */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-slate-200 font-mono text-[11px]">
-            <Clock className="w-3 h-3 text-emerald-400" />
-            <span className="font-semibold text-white">{timeString || '08:00:00'}</span>
-            <span className="text-slate-500 hidden sm:inline">|</span>
-            <span className="text-slate-400 hidden sm:inline">{dateString}</span>
-          </div>
-
           {/* Show On-Campus badge if not restricted or if staff wants to verify their presence */}
           <button
             type="button"

@@ -38,6 +38,7 @@ import {
   SchoolConfig,
 } from '../types';
 import { soundSynthesizer } from '../utils/audio';
+import { storageEngine } from '../utils/storage';
 import { getTodayDateString } from '../utils/storage';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { getDeviceSignature, formatCoordinates } from '../utils/geo';
@@ -78,6 +79,8 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
         onTimeCutoff: '07:45',
         lateCutoff: '08:30',
         closingTime: '14:30',
+        lessonStartHour: 6,
+        lessonEndHour: 17,
         superAdminPin: '1234',
       }
     );
@@ -98,15 +101,11 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
   const [pinError, setPinError] = useState<string | null>(null);
 
   const [isSmsGatewayOpen, setIsSmsGatewayOpen] = useState<boolean>(false);
-  const [smsStaffId, setSmsStaffId] = useState<string>('GES-NT-003');
+  const [smsStaffId, setSmsStaffId] = useState<string>('706703');
   const [smsAction, setSmsAction] = useState<'IN' | 'OUT'>('IN');
   const [smsSimSuccess, setSmsSimSuccess] = useState<string | null>(null);
 
   const [isPrintBadgesOpen, setIsPrintBadgesOpen] = useState<boolean>(false);
-  const [isSupervisorRollcallOpen, setIsSupervisorRollcallOpen] = useState<boolean>(false);
-  const [supervisorNotes, setSupervisorNotes] = useState<string>('All morning shift posts manned.');
-
-  // Today's attendance lookup map: staffId -> record
   const todayAttendanceMap = useMemo(() => {
     const map = new Map<string, NonTeachingAttendanceRecord>();
     attendanceRecords.forEach((r) => {
@@ -274,6 +273,16 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
       };
       onClockIn(record);
       soundSynthesizer.playClockInChime();
+
+      storageEngine.logAudit({
+        staffId: record.staffId,
+        staffName: record.staffName,
+        schoolCode: activeConfig.schoolCode,
+        category: 'attendance',
+        status: 'success',
+        action: 'CLOCK_IN_NON_TEACHING',
+        details: `Clocked in via PIN pad at ${record.clockInTime}. Method: pin_pad`,
+      });
     }
     setPinModalStaff(null);
     setEnteredPin('');
@@ -314,10 +323,32 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
       };
       onClockIn(record);
       soundSynthesizer.playClockInChime();
+
+      storageEngine.logAudit({
+        staffId: record.staffId,
+        staffName: record.staffName,
+        schoolCode: activeConfig.schoolCode,
+        category: 'attendance',
+        status: 'success',
+        action: 'CLOCK_IN_NON_TEACHING',
+        details: `Clocked in via SMS/Yam Phone at ${record.clockInTime}. Method: sms_yam_phone`,
+      });
+
       setSmsSimSuccess(`SMS Received! ${targetStaff.name} clocked in at ${timeStr}`);
     } else {
       onClockOut(targetStaff.staffId, timeStr);
       soundSynthesizer.playScanBeep();
+
+      storageEngine.logAudit({
+        staffId: targetStaff.staffId,
+        staffName: targetStaff.name,
+        schoolCode: activeConfig.schoolCode,
+        category: 'attendance',
+        status: 'success',
+        action: 'CLOCK_OUT_NON_TEACHING',
+        details: `Clocked out via SMS/Yam Phone at ${timeStr}. Method: sms_yam_phone`,
+      });
+
       setSmsSimSuccess(`SMS Received! ${targetStaff.name} clocked out at ${timeStr}`);
     }
 
@@ -325,48 +356,6 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
       setSmsSimSuccess(null);
       setIsSmsGatewayOpen(false);
     }, 1800);
-  };
-
-  // Handle Supervisor Bulk Rollcall
-  const handleSupervisorRollcallAll = () => {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour12: false });
-    const deviceSig = getDeviceSignature();
-    let count = 0;
-
-    filteredStaff.forEach((staff) => {
-      const existing = todayAttendanceMap.get(staff.staffId);
-      if (!existing) {
-        const record: NonTeachingAttendanceRecord = {
-          id: `nt-rollcall-${Date.now()}-${staff.id}`,
-          staffId: staff.staffId,
-          staffName: staff.name,
-          role: staff.role,
-          unit: staff.unit,
-          date: today,
-          clockInTime: timeStr,
-          clockInTimestamp: Date.now(),
-          method: 'supervisor_rollcall',
-          shift: staff.shift,
-          punctualityStatus: 'on_time',
-          verifiedBy: 'Shift Supervisor On-Duty Rollcall',
-          notes: supervisorNotes || 'Shift crew verified present on post by Supervisor.',
-          synced: true,
-          isIdentityVerified: true,
-          isOnCampus: geo.isWithinBounds,
-          verificationMethod: 'supervisor',
-          deviceSignature: deviceSig,
-          loginTrace: `Supervisor Direct Rollcall #${staff.staffId} • Campus Perimeter Verified • Terminal: ${deviceSig}`,
-          distanceFromCampusMeters: geo.distanceMeters ?? undefined,
-        };
-        onClockIn(record);
-        count++;
-      }
-    });
-
-    soundSynthesizer.playClockInChime();
-    alert(`✅ Bulk Shift Rollcall Completed! ${count} non-teaching staff clocked in.`);
-    setIsSupervisorRollcallOpen(false);
   };
 
   // Export CSV
@@ -451,17 +440,6 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
           >
             <Smartphone className="w-3.5 h-3.5 text-amber-400" />
             <span>Yam Phone SMS Punch</span>
-          </button>
-
-          {/* Supervisor Shift Rollcall */}
-          <button
-            type="button"
-            onClick={() => setIsSupervisorRollcallOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition shadow-xs"
-            title="Matron / Chief Security rapid morning rollcall"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Shift Rollcall</span>
           </button>
 
           {/* Print ID Badges with Barcodes */}
@@ -981,57 +959,6 @@ export const NonTeachingAttendanceMode: React.FC<NonTeachingAttendanceModeProps>
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Simulate Inbound SMS from Yam Phone</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Supervisor Rapid Rollcall Modal */}
-      {isSupervisorRollcallOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-md">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-white">Supervisor Shift Rollcall</h3>
-                <p className="text-xs text-slate-400">Rapid batch check-in for shift crew</p>
-              </div>
-              <button
-                onClick={() => setIsSupervisorRollcallOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300">
-              The Matron or Security Supervisor can mark all scheduled staff present for this shift in a single click with formal verification.
-            </p>
-
-            <div>
-              <label className="text-slate-400 text-xs block mb-1">Supervisor Observation / Notes:</label>
-              <textarea
-                value={supervisorNotes}
-                onChange={(e) => setSupervisorNotes(e.target.value)}
-                rows={2}
-                className="w-full p-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsSupervisorRollcallOpen(false)}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSupervisorRollcallAll}
-                className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-md shadow-indigo-600/20"
-              >
-                Mark Shift Crew Present ({filteredStaff.length} Staff)
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import NonTeachingAttendancePage from './non-teaching/page';
 import { storageEngine } from '../../../utils/storage';
@@ -6,38 +6,29 @@ import { StaffMember, GateAttendanceRecord, SchoolConfig } from '../../../types'
 import { soundSynthesizer } from '../../../utils/audio';
 import { securityEngine } from '../../../utils/security';
 import { useGeolocation } from '../../../hooks/useGeolocation';
-import { getDeviceSignature } from '../../../utils/geo';
+import { getDeviceSignature, calibrateCampusGateGps } from '../../../utils/geo';
 import { verifyBeaconToken } from '../../../utils/beacon';
-import { QrDoorScannerModal } from '../../../components/QrDoorScannerModal';
 import { FirebasePhoneAuthBox } from '../../../components/FirebasePhoneAuthBox';
 import { LiveBeaconScanner } from '../../../components/LiveBeaconScanner';
 import { useSchoolTheme } from '../../../hooks/useSchoolTheme';
 import {
   CheckCircle2,
   AlertTriangle,
-  ChevronDown,
   Camera,
   ShieldCheck,
-  Search,
-  User,
   Delete,
   Scan,
-  MessageSquare,
   MessageCircle,
-  Lock,
   RotateCw,
-  Smartphone,
   ArrowLeft,
-  Sparkles,
-  QrCode,
-  ExternalLink,
-  Send,
   MapPin,
+  X,
+  KeyRound,
+  IdCard,
 } from 'lucide-react';
 
 /**
  * Official Ghana Education Service (GES) Logo SVG
- * Yellow #FFD700 / #FACC15 stays constant as specified.
  */
 function GesRoundLogo() {
   return (
@@ -72,7 +63,6 @@ export default function StaffAttendancePage() {
 
   const { theme, schoolCode } = useSchoolTheme();
   const [config] = useState<SchoolConfig>(() => storageEngine.getSchoolConfig());
-  const [allStaff] = useState<StaffMember[]>(() => storageEngine.getStaff());
 
   // Geolocation state (resolves active school coordinates & supports campus calibration)
   const { lat, lng, isWithinBounds, distanceMeters, calibrateToCurrentPosition } = useGeolocation(
@@ -82,37 +72,30 @@ export default function StaffAttendancePage() {
   const isWithinGeofence = isWithinBounds;
   const coords = lat && lng ? { latitude: lat, longitude: lng } : null;
 
-  // Selected staff state
+  // Step 1: Staff ID Input State (No names pool or dropdown - must be entered manually)
+  const [staffIdInput, setStaffIdInput] = useState<string>('');
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [showStaffList, setShowStaffList] = useState(false);
 
-  // Staff Security PIN state (4 digits)
-  const [pinInput, setPinInput] = useState<string>('');
-  const [isScanningFace, setIsScanningFace] = useState(false);
-  const [faceVerified, setFaceVerified] = useState(false);
+  // Clear any legacy cached staff IDs to ensure manual entry
+  useEffect(() => {
+    try {
+      localStorage.removeItem('ges_last_staff_id');
+      localStorage.removeItem('ges_last_non_teaching_staff_id');
+    } catch {
+      // ignore
+    }
+  }, []);
 
-  // 2FA OTP & Multi-step Verification State
+  // 3-Step Verification Sequence:
+  // Step 1: 'staff_id_entry' -> Step 2: 'otp_verification' -> Step 3: 'scan_verification' -> 'success'
   const [authStep, setAuthStep] = useState<
-    'pin_entry' | 'otp_verification' | 'scan_verification' | 'success'
-  >('pin_entry');
+    'staff_id_entry' | 'otp_verification' | 'scan_verification' | 'success'
+  >('staff_id_entry');
   const [otpChannel, setOtpChannel] = useState<'sms' | 'whatsapp'>('sms');
-  const [whatsappUrl, setWhatsappUrl] = useState<string | null>(null);
-  const [otpInput, setOtpInput] = useState<string>('');
   const [devOtpReceived, setDevOtpReceived] = useState<string | null>(null);
-  const [otpPhone, setOtpPhone] = useState<string>('+3000000000');
+  const [otpPhone, setOtpPhone] = useState<string>('+233240000000');
   const [isSendingOtp, setIsSendingOtp] = useState<boolean>(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState<boolean>(false);
-  const [resendTimer, setResendTimer] = useState<number>(0);
-  const [otpFails, setOtpFails] = useState<number>(0);
-  const [otpLockSeconds, setOtpLockSeconds] = useState<number>(0);
   const [confirmationMessage, setConfirmationMessage] = useState<string | null>(null);
-  const [isScanningBadge, setIsScanningBadge] = useState<boolean>(false);
-  const [scanProgress, setScanProgress] = useState<number>(0);
-
-  // Scanner modal state
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // Feedback banner state
   const [feedback, setFeedback] = useState<{
@@ -120,59 +103,10 @@ export default function StaffAttendancePage() {
     text: string;
   } | null>(null);
 
-  // Timers for OTP Lockout & Resend countdown
-  useEffect(() => {
-    if (otpLockSeconds > 0) {
-      const timer = setInterval(() => {
-        setOtpLockSeconds((prev) => Math.max(0, prev - 1));
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [otpLockSeconds]);
-
-  useEffect(() => {
-    if (resendTimer > 0) {
-      const timer = setInterval(() => {
-        setResendTimer((prev) => Math.max(0, prev - 1));
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [resendTimer]);
-
   // Today's attendance record
   const [todayRecord, setTodayRecord] = useState<GateAttendanceRecord | null>(null);
 
-  // Teaching staff list
-  const teachingStaff = useMemo(() => allStaff.filter((s: StaffMember) => s.role !== 'Staff'), [allStaff]);
-
-  // Filtered staff based on search query
-  const filteredStaff = useMemo(
-    () =>
-      teachingStaff.filter(
-        (s: StaffMember) =>
-          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.staffId.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    [teachingStaff, searchQuery]
-  );
-
-  // Auto-select staff from localStorage or first in list
-  useEffect(() => {
-    const savedStaffId = localStorage.getItem('ges_last_staff_id');
-    if (savedStaffId) {
-      const found = teachingStaff.find((s: StaffMember) => s.staffId === savedStaffId);
-      if (found) {
-        setSelectedStaff(found);
-        return;
-      }
-    }
-    if (teachingStaff.length > 0) {
-      setSelectedStaff((prev) => prev || teachingStaff[0]);
-    }
-  }, [teachingStaff]);
-
-  // Check today's record for selected staff
+  // Check today's record when staff is selected
   useEffect(() => {
     if (!selectedStaff) {
       setTodayRecord(null);
@@ -186,123 +120,72 @@ export default function StaffAttendancePage() {
     setTodayRecord(existing || null);
   }, [selectedStaff?.staffId]);
 
-  const handleSelectStaff = (staff: StaffMember) => {
-    setSelectedStaff(staff);
-    localStorage.setItem('ges_last_staff_id', staff.staffId);
-    setIsDropdownOpen(false);
-    setPinInput('');
-    setFaceVerified(false);
-    setFeedback(null);
-  };
-
-  // MoMo Keypad clicks: 1-9, *, 0, # and delete
-  const handleKeyClick = (val: string) => {
+  // Handle on-screen keypad clicks for Staff ID
+  const handleKeypadClick = (val: string) => {
     soundSynthesizer.playKeypadBeep();
     if (val === 'back') {
-      setPinInput((prev) => prev.slice(0, -1));
+      setStaffIdInput((prev) => prev.slice(0, -1));
       return;
     }
-    if (val === '*' || val === '#') {
-      // MoMo function keys - can clear or toggle staff list
-      if (val === '#') {
-        setPinInput('');
-      } else {
-        setShowStaffList((prev) => !prev);
-      }
+    if (val === 'clear') {
+      setStaffIdInput('');
       return;
     }
-    if (pinInput.length < 4) {
-      setPinInput((prev) => prev + val);
-    }
+    setStaffIdInput((prev) => prev + val);
   };
 
-  // Simulate Face Scan with Camera viewfinder
-  const handleSimulateFaceScan = () => {
-    if (!selectedStaff) {
-      setFeedback({ type: 'error', text: 'Please select your name first.' });
+  // Step 1 Verification: Lookup unique Staff ID and dispatch 2FA SMS
+  const handleVerifyStaffId = (overrideId?: string) => {
+    const rawId = (overrideId || staffIdInput).trim();
+    if (!rawId) {
+      soundSynthesizer.playWarningBeep();
+      setFeedback({ type: 'error', text: 'Please enter your unique Staff ID.' });
       return;
     }
-    setIsScanningFace(true);
-    soundSynthesizer.playBeep(440, 100);
-    setTimeout(() => {
-      setIsScanningFace(false);
-      setFaceVerified(true);
-      soundSynthesizer.playSuccessChime();
+
+    const allStaff = storageEngine.getStaff();
+    const matched = allStaff.find(
+      (s) => s.staffId.toLowerCase().trim() === rawId.toLowerCase().trim()
+    );
+
+    if (!matched) {
+      soundSynthesizer.playWarningBeep();
       setFeedback({
-        type: 'success',
-        text: `Face verified for ${selectedStaff.name}! Now tap "Verify My PIN".`,
+        type: 'error',
+        text: `Staff ID '${rawId}' not found. Please verify your Staff ID or contact School Administration.`,
       });
-    }, 1200);
-  };
-
-  // Verification & Clock-in action
-  const handleVerifyStep1 = () => {
-    if (!selectedStaff) {
-      setFeedback({ type: 'error', text: 'Please select your name first.' });
       return;
     }
 
-    // Brute-force protection check
-    const lockStatus = securityEngine.isLockedOut(selectedStaff.staffId);
+    // Check brute-force lockout
+    const lockStatus = securityEngine.isLockedOut(matched.staffId);
     if (lockStatus.locked) {
       soundSynthesizer.playWarningBeep();
       setFeedback({
         type: 'error',
-        text: `Account locked due to failed attempts. Try again in ${lockStatus.remainingSeconds}s.`,
+        text: `Account locked due to recent attempts. Try again in ${lockStatus.remainingSeconds}s.`,
       });
       return;
     }
 
-    // Verify PIN: accepts stored staff PIN or fallback '1234' / '0000'
-    const correctPin = selectedStaff.pin || '1234';
-    const isPinCorrect = pinInput === correctPin || pinInput === '0000';
+    // Clear failed security counters on recognized staff ID
+    securityEngine.clearFailedAttempts(matched.staffId);
+    setSelectedStaff(matched);
+    soundSynthesizer.playKeypadBeep();
 
-    if (!isPinCorrect && !faceVerified) {
-      soundSynthesizer.playWarningBeep();
-      const attemptResult = securityEngine.recordFailedAttempt(
-        selectedStaff.staffId,
-        schoolCode || config.schoolCode,
-        {
-          staffId: selectedStaff.staffId,
-          staffName: selectedStaff.name,
-          type: 'brute_force_pin',
-          deviceSignature: getDeviceSignature(),
-          coordinates: coords ? { lat: coords.latitude, lng: coords.longitude } : undefined,
-        }
-      );
-
-      if (attemptResult.locked) {
-        setFeedback({
-          type: 'error',
-          text: `Too many failed attempts. Locked for ${attemptResult.remainingSeconds}s.`,
-        });
-      } else {
-        const attemptsLeft = Math.max(0, 5 - attemptResult.count);
-        setFeedback({
-          type: 'error',
-          text: `Incorrect PIN. ${attemptsLeft} attempt(s) remaining.`,
-        });
-      }
-      setPinInput('');
-      return;
-    }
-
-    // Reset security counter on valid PIN credentials
-    securityEngine.clearFailedAttempts(selectedStaff.staffId);
-
-    // Trigger 2FA SMS OTP dispatch
-    initiateOtpFlow(selectedStaff);
+    // Trigger 2FA OTP dispatch to their registered phone number
+    initiateOtpFlow(matched);
   };
 
+  // Dispatch OTP via Arkesel SMS gateway
   const initiateOtpFlow = async (
     staff: StaffMember,
     channel: 'sms' | 'whatsapp' = otpChannel
   ) => {
     setIsSendingOtp(true);
     setOtpChannel(channel);
-    const targetPhone = staff.phone || '+3000000000';
+    const targetPhone = staff.phone || '+233240000000';
     setOtpPhone(targetPhone);
-    setResendTimer(45);
 
     try {
       const res = await fetch('/api/auth/send-otp', {
@@ -322,190 +205,66 @@ export default function StaffAttendancePage() {
 
       if (res.ok && data.success) {
         setDevOtpReceived(data.devOtp || '4821');
-        if (data.whatsappUrl) {
-          setWhatsappUrl(data.whatsappUrl);
-        } else {
-          const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
-          setWhatsappUrl(
-            `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-              `Ghana Education Service (GES) Attendance Verification: Your 4-digit OTP is ${data.devOtp || '4821'}`
-            )}`
-          );
-        }
         setAuthStep('otp_verification');
-        setOtpInput('');
         setFeedback({
           type: 'info',
           text:
             channel === 'whatsapp'
-              ? `2FA WhatsApp Code dispatched to ${targetPhone}. Please enter the 4-digit OTP.`
-              : `2FA SMS Code sent via Firebase to ${targetPhone}. Please enter the 4-digit OTP.`,
+              ? `💬 2FA Code dispatched via WhatsApp to registered number.`
+              : `📱 2FA OTP SMS dispatched to registered number. Please enter the 4-digit code.`,
         });
       } else {
-        // Fallback in dev
-        setDevOtpReceived('4821');
-        setAuthStep('otp_verification');
-        setFeedback({
-          type: 'info',
-          text: `2FA ${channel === 'whatsapp' ? 'WhatsApp' : 'SMS'} Code dispatched to ${targetPhone}. Enter code to confirm.`,
-        });
+        throw new Error(data.message || 'Failed to dispatch 2FA SMS');
       }
-    } catch {
+    } catch (err: any) {
       setIsSendingOtp(false);
-      setDevOtpReceived('4821');
-      setAuthStep('otp_verification');
-      setFeedback({
-        type: 'info',
-        text: `${channel === 'whatsapp' ? 'WhatsApp' : 'Firebase SMS'} Gateway active. Code dispatched to ${targetPhone}.`,
-      });
-    }
-  };
-
-  // 2FA OTP Keypad handler
-  const handleOtpKeyClick = (val: string) => {
-    soundSynthesizer.playKeypadBeep();
-    if (val === 'back') {
-      setOtpInput((prev) => prev.slice(0, -1));
-      return;
-    }
-    if (val === 'clear') {
-      setOtpInput('');
-      return;
-    }
-    if (otpInput.length < 4) {
-      setOtpInput((prev) => prev + val);
-    }
-  };
-
-  // Submit and verify OTP server-side -> proceed to Step 2 Physical Scan
-  const handleVerifyOtp = async () => {
-    if (!selectedStaff || otpInput.length < 4) return;
-    if (otpLockSeconds > 0) {
       soundSynthesizer.playWarningBeep();
       setFeedback({
         type: 'error',
-        text: `Terminal locked due to failed OTP attempts. Try again in ${otpLockSeconds}s.`,
+        text: err?.message || 'Network delay connecting to SMS gateway. You can request a 10-Min Headmaster Override PIN.',
+      });
+      // Advance to step 2 so user can input code or use Headmaster Override
+      setAuthStep('otp_verification');
+    }
+  };
+
+  // Step 3 Physical Scan: Requires genuine optical scan of campus beacon
+  const handleBeaconScanned = (token: string) => {
+    if (!selectedStaff) return;
+
+    const verification = verifyBeaconToken(token, schoolCode || config.schoolCode);
+    if (!verification.valid) {
+      soundSynthesizer.playWarningBeep();
+      setFeedback({
+        type: 'error',
+        text: `Beacon Scan Error: ${verification.message || 'Invalid QR code'}`,
       });
       return;
     }
 
-    setIsVerifyingOtp(true);
-    try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          staffId: selectedStaff.staffId,
-          otp: otpInput,
-          phone: otpPhone,
-          schoolCode: schoolCode || config.schoolCode,
-          staffName: selectedStaff.name,
-        }),
-      });
+    soundSynthesizer.playScanBeep();
 
-      const data = await res.json();
-      setIsVerifyingOtp(false);
-
-      if (res.ok && data.success) {
-        // Save JWT token
-        if (data.token) {
-          localStorage.setItem('ges_staff_jwt_token', data.token);
-        }
-
-        soundSynthesizer.playScanBeep();
-        setFeedback({
-          type: 'success',
-          text: `✓ Step 1 Verified: 2FA ${otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} Code Accepted! Now complete Step 2 (Scan Physical QR Badge / Beacon).`,
-        });
-        setAuthStep('scan_verification');
-        setOtpInput('');
-        setOtpFails(0);
-      } else {
-        // Handle failed OTP verification
-        soundSynthesizer.playWarningBeep();
-        const newFails = data.failedAttempts || otpFails + 1;
-        setOtpFails(newFails);
-
-        if (data.lockout || newFails >= 5) {
-          setOtpLockSeconds(60);
-          securityEngine.recordFailedAttempt(
-            selectedStaff.staffId,
-            schoolCode || config.schoolCode,
-            {
-              staffId: selectedStaff.staffId,
-              staffName: selectedStaff.name,
-              type: 'multiple_failed_otp',
-              deviceSignature: getDeviceSignature(),
-              coordinates: coords ? { lat: coords.latitude, lng: coords.longitude } : undefined,
-            }
-          );
-          setFeedback({
-            type: 'error',
-            text: `⚠️ Security lockout: 5 failed OTP attempts. Terminal locked for 60 seconds.`,
-          });
-        } else {
-          setFeedback({
-            type: 'error',
-            text: `Invalid OTP code (${otpInput}). Attempt ${newFails}/5. Try again.`,
-          });
-        }
-      }
-    } catch {
-      setIsVerifyingOtp(false);
-      // If server is unreachable, verify strictly against active dev OTP received
-      if (devOtpReceived && otpInput === devOtpReceived) {
-        soundSynthesizer.playScanBeep();
-        setFeedback({
-          type: 'success',
-          text: `✓ Step 1 Verified: 2FA ${otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} Code Accepted! Now complete Step 2 (Scan Physical QR Badge / Beacon).`,
-        });
-        setAuthStep('scan_verification');
-        setOtpInput('');
-        setOtpFails(0);
-      } else {
-        soundSynthesizer.playWarningBeep();
-        setFeedback({
-          type: 'error',
-          text: 'Invalid OTP code entered. Please check and try again.',
-        });
-      }
+    // Auto-anchor gate GPS to current position on valid beacon authentication
+    if (coords) {
+      calibrateCampusGateGps(
+        verification.detectedSchoolCode || schoolCode || config.schoolCode,
+        coords.latitude,
+        coords.longitude,
+        600
+      );
     }
-  };
 
-  // Step 2 Physical Scan handler (QR Badge or Camera Scan)
-  const handleCompletePhysicalScan = (method: 'qr_badge' | 'face_liveness' = 'qr_badge') => {
-    if (!selectedStaff || isScanningBadge) return;
-
-    setIsScanningBadge(true);
-    setScanProgress(20);
-    soundSynthesizer.playKeypadBeep();
-
-    setTimeout(() => {
-      setScanProgress(60);
-    }, 350);
-
-    setTimeout(() => {
-      setScanProgress(90);
-    }, 700);
-
-    setTimeout(() => {
-      setScanProgress(100);
-      finalizeClockIn(method);
-    }, 1050);
+    // Finalize attendance check-in
+    finalizeClockIn('qr_badge');
   };
 
   const finalizeClockIn = (method: 'qr_badge' | 'face_liveness') => {
     if (!selectedStaff) return;
 
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
-    const dateStr = now.toISOString().split('T')[0];
-    const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 0);
+    const clockDate = new Date();
+    const timeStr = clockDate.toLocaleTimeString('en-GH');
+    const dateStr = clockDate.toISOString().split('T')[0];
+    const isLate = clockDate.getHours() > 8 || (clockDate.getHours() === 8 && clockDate.getMinutes() > 0);
 
     const newRecord: GateAttendanceRecord = {
       id: `gate_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -545,66 +304,23 @@ export default function StaffAttendancePage() {
       type: 'success',
       text: `✓ ${confirmedText} (${isLate ? 'LATE' : 'ON-TIME'} at ${timeStr})`,
     });
-    setIsScanningBadge(false);
-    setScanProgress(0);
     setAuthStep('success');
-    setOtpInput('');
-    setPinInput('');
-  };
-
-  // Handle physical campus beacon scanned via live camera
-  const handleBeaconScanned = (token: string) => {
-    setIsScannerOpen(false);
-    if (!selectedStaff) return;
-
-    const verification = verifyBeaconToken(token, schoolCode || config.schoolCode);
-    if (!verification.valid) {
-      soundSynthesizer.playWarningBeep();
-      setFeedback({
-        type: 'error',
-        text: `Beacon Scan Error: ${verification.message || 'Invalid QR code'}`,
-      });
-      return;
-    }
-
-    soundSynthesizer.playScanBeep();
-
-    // Valid optical beacon scan confirms physical presence at campus terminal
-    if (authStep === 'scan_verification') {
-      finalizeClockIn('qr_badge');
-    } else {
-      // If scanned directly from main screen
-      finalizeClockIn('qr_badge');
-    }
   };
 
   const isOffCampus = coords && !isWithinGeofence;
-  const distanceKm = distanceMeters ? (distanceMeters / 1000).toFixed(1) : null;
 
   return (
     <div className="w-full max-w-[420px] mx-auto min-h-screen py-3 sm:py-6 px-3 sm:px-0 flex flex-col justify-center font-sans select-none">
       {/* Centered Mobile Card: Rounded 30px, White, Border #E2E8F0 */}
       <div className="w-full bg-white rounded-[30px] border border-[#E2E8F0] shadow-xl overflow-hidden p-4 sm:p-5 space-y-3.5 relative">
-        {/* TOP STATUS BAR (09:41 Mock Style) */}
-        <div className="flex items-center justify-between px-2 pt-0.5 text-xs font-semibold text-slate-800">
-          <span>09:41</span>
-          <div className="w-20 h-4 bg-slate-900 rounded-full mx-auto" />
-          <div className="flex items-center gap-1.5 text-[10px]">
-            <span>5G</span>
-            <div className="w-4 h-2.5 border border-slate-700 rounded-xs p-0.5 flex">
-              <div className="w-full h-full bg-slate-800" />
-            </div>
-          </div>
-        </div>
-
-        {/* INSTITUTIONAL PILL HEADER: GES logo + GES | School Name + User profile icon */}
+        {/* INSTITUTIONAL PILL HEADER: GES logo + GES | School Name */}
         <div className="bg-white/90 border border-slate-100 rounded-2xl p-2.5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-2.5">
             <GesRoundLogo />
             <div className="flex items-center gap-2">
               <span className="text-base font-black text-[#0F172A] tracking-tight">GES</span>
               <span className="text-slate-300">|</span>
-              <span className="text-xs font-bold text-slate-700 truncate max-w-[150px]">
+              <span className="text-xs font-bold text-slate-700 truncate max-w-[170px]">
                 {theme.shortName || theme.name}
               </span>
             </div>
@@ -621,16 +337,16 @@ export default function StaffAttendancePage() {
           </div>
         </div>
 
-        {/* SUB-HEADER: theme.primary, rounded 12px, height 60px */}
+        {/* SUB-HEADER: theme.primary */}
         <div
-          className="h-[60px] rounded-[12px] px-3.5 flex items-center justify-between shadow-xs text-white transition-colors duration-300"
+          className="h-[52px] rounded-[12px] px-3.5 flex items-center justify-between shadow-xs text-white transition-colors duration-300"
           style={{ backgroundColor: theme.primary }}
         >
           <div>
             <h1 className="text-[11px] font-bold text-white tracking-wide leading-tight uppercase">
               {theme.shortName || theme.name} • Staff Attendance
             </h1>
-            <p className="text-[9px] text-emerald-100 font-medium flex items-center gap-1 mt-0.5">
+            <p className="text-[9px] text-emerald-100 font-medium flex items-center gap-1.5 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
               <span>🟢 Gate Online • {theme.region}</span>
             </p>
@@ -643,17 +359,19 @@ export default function StaffAttendancePage() {
           </button>
         </div>
 
-        {/* GEOFENCE CHECK: Warning if off-campus with 1-tap UAT calibration button */}
+        {/* GEOFENCE CHECK: Campus presence & 1-tap UAT campus anchor */}
         {isOffCampus && (
           <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col gap-2 text-amber-900 shadow-xs">
             <div className="flex items-center gap-2.5">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-              <div className="text-[11px] leading-tight">
+              <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0 text-amber-700">
+                <MapPin className="w-4 h-4 animate-bounce" />
+              </div>
+              <div className="text-[11px] leading-tight flex-1">
                 <strong className="block text-amber-950 font-bold">
-                  Distance: {distanceKm}km from {theme.shortName || theme.name} Campus
+                  📍 Campus Location: Performing UAT with Beacon QR
                 </strong>
                 <p className="text-[10px] text-amber-700 mt-0.5">
-                  Doing UAT on campus? Tap below to anchor the gate GPS to your location, or scan the Beacon QR code to confirm physical presence.
+                  Device GPS active. Tap below to anchor gate coordinates to your location (0m), or scan the Beacon QR code in Step 3.
                 </p>
               </div>
             </div>
@@ -675,10 +393,10 @@ export default function StaffAttendancePage() {
                     });
                   }
                 }}
-                className="w-full py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-xs"
+                className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-sm"
               >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>📍 I am on Campus • Calibrate Gate GPS Here</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                <span>📍 Set Campus Gate to My Current Location (Reset to 0m)</span>
               </button>
             </div>
           </div>
@@ -699,245 +417,127 @@ export default function StaffAttendancePage() {
           </div>
         )}
 
-        {/* STEP 1: PIN ENTRY & SCAN VIEW */}
-        {authStep === 'pin_entry' && (
-          <>
-            {/* SEARCH & SELECT CARD: Teaching Staff Clock In */}
-            <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3.5 space-y-2 shadow-xs">
-              <div className="text-center">
+        {/* STEP 1: STAFF ID ENTRY (NO NAMES POOL OR DROPDOWN) */}
+        {authStep === 'staff_id_entry' && (
+          <div className="space-y-3">
+            {/* Step Progress Pill */}
+            <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-slate-500">
+              <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-300 ring-2 ring-indigo-200">
+                <IdCard className="w-3 h-3" /> Step 1: Staff ID
+              </span>
+              <span>→</span>
+              <span className="flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
+                <ShieldCheck className="w-3 h-3" /> Step 2: 2FA OTP
+              </span>
+              <span>→</span>
+              <span className="flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
+                <Camera className="w-3 h-3" /> Step 3: Scan Beacon
+              </span>
+            </div>
+
+            {/* Unique Staff ID Input Card */}
+            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-4 space-y-3">
+              <div className="text-center space-y-1">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center mx-auto text-indigo-600">
+                  <KeyRound className="w-5 h-5" />
+                </div>
                 <h2
-                  className="text-base font-extrabold tracking-tight transition-colors duration-300"
+                  className="text-base font-extrabold tracking-tight"
                   style={{ color: theme.primary }}
                 >
-                  Teaching Staff Clock In
+                  Enter Your GES Staff ID
                 </h2>
-                <p className="text-[10px] text-slate-500 font-medium">
-                  Secure gate attendance via 4-digit PIN, camera scan & 2FA SMS OTP
+                <p className="text-[11px] text-slate-500">
+                  Enter your unique Staff ID to verify identity and dispatch your 2FA OTP code.
                 </p>
               </div>
 
-              <div className="pt-1">
-                <span className="text-[10px] font-bold text-slate-700 block mb-1">
-                  Good Morning ☀️ <strong style={{ color: theme.secondary || '#CA8A04' }}>Select Your Name</strong>
-                </span>
-
-                {/* Custom Searchable Dropdown */}
-                <div className="relative">
+              {/* Staff ID Input Display */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={staffIdInput}
+                  onChange={(e) => setStaffIdInput(e.target.value.trim())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleVerifyStaffId();
+                  }}
+                  placeholder="e.g. 1304201"
+                  className="w-full text-center text-xl font-mono font-black text-slate-900 tracking-wider py-3 px-4 bg-white border-2 border-indigo-300 rounded-xl focus:border-indigo-600 focus:outline-none shadow-xs"
+                  autoFocus
+                />
+                {staffIdInput.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className="w-full bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-left text-xs font-bold text-slate-800 flex items-center justify-between transition focus:ring-2 focus:outline-none"
-                    style={{
-                      borderColor: isDropdownOpen ? theme.primary : '#CBD5E1',
-                    }}
+                    onClick={() => setStaffIdInput('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700"
                   >
-                    <span className="truncate">
-                      {selectedStaff
-                        ? `${selectedStaff.name} — ${selectedStaff.department}`
-                        : 'Select Name ↓'}
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+                    <X className="w-4 h-4" />
                   </button>
-
-                  {isDropdownOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-30 p-2 max-h-48 overflow-y-auto space-y-1">
-                      <div className="relative mb-1">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-                        <input
-                          type="text"
-                          placeholder="Search staff name or department..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full pl-8 pr-2.5 py-1.5 text-[11px] bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
-                          autoFocus
-                        />
-                      </div>
-                      {filteredStaff.map((staff: StaffMember) => (
-                        <button
-                          key={staff.staffId}
-                          type="button"
-                          onClick={() => handleSelectStaff(staff)}
-                          className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg transition flex items-center justify-between hover:bg-slate-50"
-                          style={{
-                            backgroundColor:
-                              selectedStaff?.staffId === staff.staffId ? `${theme.primary}12` : undefined,
-                            color: selectedStaff?.staffId === staff.staffId ? theme.primary : '#334155',
-                            fontWeight: selectedStaff?.staffId === staff.staffId ? 800 : 500,
-                          }}
-                        >
-                          <span className="truncate">
-                            {staff.name} — <span className="text-slate-500">{staff.department}</span>
-                          </span>
-                          <span className="text-[9px] font-mono text-slate-400 shrink-0 ml-1">
-                            {staff.staffId}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* CAMERA VIEWFINDER SQUARE (Matching Reference Image) */}
-            <div className="relative rounded-2xl bg-[#09151F] border border-amber-300/40 p-3 flex flex-col items-center justify-center overflow-hidden shadow-inner h-32">
-              {/* Corner Viewfinder Brackets */}
-              <div
-                className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2"
-                style={{ borderColor: theme.primary }}
-              />
-              <div
-                className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2"
-                style={{ borderColor: theme.primary }}
-              />
-              <div
-                className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2"
-                style={{ borderColor: theme.primary }}
-              />
-              <div
-                className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2"
-                style={{ borderColor: theme.primary }}
-              />
-
-              {/* Center Target Box */}
-              <div
-                className="w-24 h-16 border border-dashed rounded flex items-center justify-center relative"
-                style={{ borderColor: `${theme.primary}99` }}
-              >
-                {/* Scanning Laser Line */}
-                <div
-                  className={`absolute inset-x-0 h-0.5 shadow-sm ${
-                    isScanningFace ? 'animate-bounce' : 'opacity-80'
-                  }`}
-                  style={{ backgroundColor: theme.primary }}
-                />
-                {isScanningFace && (
-                  <span className="text-[9px] font-mono animate-pulse" style={{ color: theme.primary }}>
-                    Analyzing...
-                  </span>
                 )}
               </div>
 
-              <p className="text-[8px] text-slate-300 font-mono mt-2 flex items-center gap-1">
-                <span>Position face inside square viewfinder</span>
-                <button
-                  onClick={handleSimulateFaceScan}
-                  className="hover:underline font-bold"
-                  style={{ color: theme.primary }}
-                >
-                  [Scan] 📷
-                </button>
-              </p>
-
-              {/* Verified Badge */}
-              {faceVerified && (
-                <div
-                  className="absolute bottom-2 right-2 text-white rounded-full px-2 py-0.5 text-[9px] font-black flex items-center gap-1 shadow-md animate-scale"
-                  style={{ backgroundColor: theme.primary }}
-                >
-                  <span>✓</span>
-                  <span>Verified</span>
-                </div>
-              )}
-            </div>
-
-            {/* STAFF SECURITY PIN PAD CARD: 1-2-3 / 4-5-6 / 7-8-9 / * 0 # */}
-            <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-3 space-y-2.5">
-              <div className="text-center space-y-1">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider">
-                    Enter 4-Digit Security PIN
-                  </span>
-                  {pinInput.length > 0 && (
-                    <button
-                      onClick={() => handleKeyClick('back')}
-                      className="text-[10px] text-slate-500 hover:text-slate-800 font-bold flex items-center gap-0.5"
-                    >
-                      <Delete className="w-3 h-3" />
-                      <span>Clear</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* 4 empty circles with theme.primary border */}
-                <div className="flex justify-center items-center gap-2.5 py-0.5">
-                  {[0, 1, 2, 3].map((idx) => {
-                    const filled = pinInput.length > idx;
-                    return (
-                      <div
-                        key={idx}
-                        className="w-3.5 h-3.5 rounded-full transition-all duration-100"
-                        style={{
-                          backgroundColor: filled ? theme.primary : '#FFFFFF',
-                          borderColor: theme.primary,
-                          borderWidth: filled ? '0px' : '2px',
-                          transform: filled ? 'scale(1.15)' : 'scale(1)',
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Keypad: 1-2-3 / 4-5-6 / 7-8-9 / * 0 # */}
-              <div className="grid grid-cols-3 gap-1.5">
+              {/* On-Screen Touch Keypad for Fast Mobile Punch */}
+              <div className="grid grid-cols-3 gap-1.5 pt-1">
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
                   <button
                     key={digit}
-                    onClick={() => handleKeyClick(digit)}
-                    className="h-11 sm:h-12 bg-white hover:bg-slate-50 border border-[#E2E8F0] rounded-[12px] text-base sm:text-lg font-bold text-slate-800 shadow-xs flex items-center justify-center transition active:scale-95 duration-100"
+                    type="button"
+                    onClick={() => handleKeypadClick(digit)}
+                    className="h-11 bg-white hover:bg-slate-100 border border-[#E2E8F0] rounded-xl text-base font-bold text-slate-800 shadow-2xs flex items-center justify-center transition active:scale-95 duration-100"
                   >
                     {digit}
                   </button>
                 ))}
 
                 <button
-                  onClick={() => handleKeyClick('*')}
-                  className="h-11 sm:h-12 bg-white hover:bg-slate-50 border border-[#E2E8F0] rounded-[12px] text-base font-black text-slate-600 shadow-xs flex items-center justify-center transition active:scale-95 duration-100"
-                  title="Toggle Staff Quick List"
+                  type="button"
+                  onClick={() => handleKeypadClick('clear')}
+                  className="h-11 bg-white hover:bg-slate-100 border border-[#E2E8F0] rounded-xl text-xs font-bold text-slate-500 shadow-2xs flex items-center justify-center transition active:scale-95 duration-100"
                 >
-                  *
+                  Clear
                 </button>
 
                 <button
-                  onClick={() => handleKeyClick('0')}
-                  className="h-11 sm:h-12 bg-white hover:bg-slate-50 border border-[#E2E8F0] rounded-[12px] text-base sm:text-lg font-bold text-slate-800 shadow-xs flex items-center justify-center transition active:scale-95 duration-100"
+                  type="button"
+                  onClick={() => handleKeypadClick('0')}
+                  className="h-11 bg-white hover:bg-slate-100 border border-[#E2E8F0] rounded-xl text-base font-bold text-slate-800 shadow-2xs flex items-center justify-center transition active:scale-95 duration-100"
                 >
                   0
                 </button>
 
                 <button
-                  onClick={() => handleKeyClick('#')}
-                  className="h-11 sm:h-12 bg-white hover:bg-slate-50 border border-[#E2E8F0] rounded-[12px] text-base font-black text-slate-600 shadow-xs flex items-center justify-center transition active:scale-95 duration-100"
-                  title="Reset PIN"
+                  type="button"
+                  onClick={() => handleKeypadClick('back')}
+                  className="h-11 bg-white hover:bg-slate-100 border border-[#E2E8F0] rounded-xl text-slate-700 shadow-2xs flex items-center justify-center transition active:scale-95 duration-100"
                 >
-                  #
+                  <Delete className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* VERIFY PIN & PROCEED TO 2FA OTP BUTTON */}
+              {/* VERIFY STAFF ID & SEND 2FA SMS BUTTON */}
               <button
-                onClick={handleVerifyStep1}
-                disabled={(pinInput.length < 4 && !faceVerified) || isSendingOtp}
+                type="button"
+                onClick={() => handleVerifyStaffId()}
+                disabled={staffIdInput.trim().length === 0 || isSendingOtp}
                 style={{
-                  backgroundColor: pinInput.length >= 4 || faceVerified ? theme.primary : '#CBD5E1',
+                  backgroundColor: staffIdInput.trim().length > 0 ? theme.primary : '#CBD5E1',
                 }}
-                className="w-full h-14 text-white font-black text-base rounded-full shadow-lg flex items-center justify-center gap-2 transition active:scale-98 duration-150 cursor-pointer disabled:cursor-not-allowed"
+                className="w-full h-13 text-white font-black text-sm rounded-full shadow-md flex items-center justify-center gap-2 transition active:scale-98 duration-150 cursor-pointer disabled:cursor-not-allowed"
               >
                 {isSendingOtp ? (
                   <>
-                    <RotateCw className="w-5 h-5 animate-spin" />
-                    <span>Sending 2FA SMS...</span>
+                    <RotateCw className="w-4 h-4 animate-spin" />
+                    <span>Verifying ID &amp; Dispatching SMS...</span>
                   </>
                 ) : (
                   <>
-                    <ShieldCheck className="w-5 h-5 text-yellow-300" />
-                    <span>Verify PIN & Send 2FA SMS</span>
+                    <ShieldCheck className="w-4 h-4 text-yellow-300" />
+                    <span>Verify Staff ID &amp; Send 2FA SMS</span>
                   </>
                 )}
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {/* STEP 2: 2FA OTP SCREEN (SMS or WhatsApp) */}
@@ -946,25 +546,46 @@ export default function StaffAttendancePage() {
             {/* Step Progress Pill */}
             <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-slate-500">
               <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                <CheckCircle2 className="w-3 h-3" /> Step 1: PIN Verified
+                <CheckCircle2 className="w-3 h-3" /> Step 1: Staff ID
               </span>
               <span>→</span>
-              <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
-                <ShieldCheck className="w-3 h-3" /> 2FA OTP
+              <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 ring-2 ring-indigo-200">
+                <ShieldCheck className="w-3 h-3" /> Step 2: 2FA OTP
               </span>
               <span>→</span>
               <span className="flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
-                <QrCode className="w-3 h-3" /> Step 2: Scan
+                <Camera className="w-3 h-3" /> Step 3: Scan Beacon
               </span>
             </div>
 
-            <div className="py-2 space-y-3">
+            {/* Verified Staff ID Banner (Masked phone for privacy) */}
+            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-slate-500 text-[10px] block">Verified Staff ID</span>
+                <span className="font-mono font-black text-slate-900">{selectedStaff?.staffId}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-500 text-[10px] block">Registered Phone</span>
+                <span className="font-mono font-bold text-indigo-700">
+                  {selectedStaff?.phone
+                    ? `${selectedStaff.phone.slice(0, 7)}••••${selectedStaff.phone.slice(-2)}`
+                    : 'Registered Number'}
+                </span>
+              </div>
+            </div>
+
+            <div className="py-1 space-y-3">
               <FirebasePhoneAuthBox
                 staffPhone={otpPhone || '+233245550192'}
                 staffName={selectedStaff?.name || 'Staff Member'}
-                staffId={selectedStaff?.staffId || 'GES-T-0428'}
+                staffId={selectedStaff?.staffId || '1304201'}
                 schoolCode={schoolCode || config.schoolCode}
-                onVerified={() => setAuthStep('scan_verification')}
+                initialStep="otp"
+                devOtp={devOtpReceived || undefined}
+                onVerified={() => {
+                  soundSynthesizer.playSuccessChime();
+                  setAuthStep('scan_verification');
+                }}
               />
 
               {/* Instant WhatsApp fallback prompt if on SMS */}
@@ -976,29 +597,44 @@ export default function StaffAttendancePage() {
                     className="text-[11px] font-bold text-[#128C7E] hover:underline inline-flex items-center gap-1"
                   >
                     <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
-                    <span>SMS not arriving? Tap to receive OTP via WhatsApp</span>
+                    <span>SMS delayed? Tap to receive OTP via WhatsApp</span>
                   </button>
                 </div>
               )}
+
+              {/* Back to Step 1 */}
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthStep('staff_id_entry');
+                    setFeedback(null);
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  <span>Change Staff ID</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* STEP 2: PHYSICAL VERIFICATION SCAN (Live Camera Campus Beacon QR Scan) */}
+        {/* STEP 3: PHYSICAL CAMPUS BEACON SCAN (INTEGRATED LIVE CAMERA) */}
         {authStep === 'scan_verification' && (
           <div className="bg-white border-2 border-indigo-400/40 rounded-2xl p-4 sm:p-5 space-y-4 shadow-md animate-scale">
             {/* Step Progress Pill */}
             <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-slate-500">
               <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                <CheckCircle2 className="w-3 h-3" /> Step 1: OTP Verified
+                <CheckCircle2 className="w-3 h-3" /> Step 1: Staff ID
+              </span>
+              <span>→</span>
+              <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3" /> Step 2: OTP
               </span>
               <span>→</span>
               <span className="flex items-center gap-1 text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-300 ring-2 ring-indigo-200">
-                <Camera className="w-3 h-3" /> Step 2: Scan Beacon
-              </span>
-              <span>→</span>
-              <span className="flex items-center gap-1 text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
-                <CheckCircle2 className="w-3 h-3" /> Confirm
+                <Camera className="w-3 h-3" /> Step 3: Scan Beacon
               </span>
             </div>
 
@@ -1008,44 +644,12 @@ export default function StaffAttendancePage() {
                 <Scan className="w-6 h-6 animate-pulse" />
               </div>
               <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-                Step 2: Point Camera at Campus Beacon QR
+                Step 3: Point Camera at Campus Beacon QR
               </h2>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                Aim your phone camera at the physical <strong className="text-slate-800">Campus Beacon QR code</strong> right in front of you on campus to complete attendance.
+                Aim your camera at the physical <strong className="text-slate-800">Campus Beacon QR Code</strong> in front of you on campus to complete attendance.
               </p>
             </div>
-
-            {/* Staff Identification Card */}
-            {selectedStaff && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full overflow-hidden bg-slate-200 border-2 border-white shadow-xs shrink-0 flex items-center justify-center font-bold text-slate-700">
-                  {selectedStaff.avatar ? (
-                    <img
-                      src={selectedStaff.avatar}
-                      alt={selectedStaff.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span>{selectedStaff.name.slice(0, 2).toUpperCase()}</span>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="font-extrabold text-xs sm:text-sm text-slate-900 truncate">
-                    {selectedStaff.name}
-                  </div>
-                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5 font-mono">
-                    <span className="text-indigo-700 font-bold">{selectedStaff.staffId}</span>
-                    <span>•</span>
-                    <span className="truncate">{selectedStaff.department}</span>
-                  </div>
-                </div>
-                <div className="shrink-0">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                    <CheckCircle2 className="w-3 h-3" /> OTP Passed
-                  </span>
-                </div>
-              </div>
-            )}
 
             {/* LIVE OPTICAL CAMERA QR SCANNER */}
             <LiveBeaconScanner
@@ -1055,24 +659,21 @@ export default function StaffAttendancePage() {
               onBeaconVerified={handleBeaconScanned}
             />
 
-            {/* Return to OTP Step */}
+            {/* Back to Step 2 */}
             <div className="text-center pt-1">
               <button
                 type="button"
-                onClick={() => {
-                  setAuthStep('otp_verification');
-                  setIsScanningBadge(false);
-                }}
+                onClick={() => setAuthStep('otp_verification')}
                 className="text-[11px] text-slate-500 hover:text-slate-800 font-semibold inline-flex items-center gap-1 cursor-pointer"
               >
                 <ArrowLeft className="w-3 h-3" />
-                <span>Back to Step 1 (OTP Verification)</span>
+                <span>Back to Step 2 (OTP Verification)</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 3: SUCCESS CHECK-IN CONFIRMED CARD */}
+        {/* STEP 4: SUCCESS CONFIRMATION CARD */}
         {authStep === 'success' && (
           <div className="bg-white border-2 border-emerald-500/40 rounded-2xl p-5 text-center space-y-3.5 shadow-md animate-scale">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
@@ -1092,146 +693,61 @@ export default function StaffAttendancePage() {
             {/* Verified Credentials Breakdown */}
             <div className="p-3 bg-slate-50 rounded-xl text-left text-xs space-y-2 border border-slate-200">
               <div className="flex justify-between items-center">
-                <span className="text-slate-500">Gate Location:</span>
-                <span className="font-bold text-emerald-700">✓ On-Campus (Within Geofence)</span>
+                <span className="text-slate-500">Step 1 Staff ID:</span>
+                <span className="font-bold text-emerald-700">✓ Unique ID Verified</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-500">Step 1 Handset 2FA:</span>
+                <span className="text-slate-500">Step 2 2FA OTP:</span>
                 <span className="font-bold text-indigo-700">
-                  ✓ {otpChannel === 'whatsapp' ? 'WhatsApp OTP Verified' : 'Firebase SMS OTP Verified'}
+                  ✓ {otpChannel === 'whatsapp' ? 'WhatsApp OTP Verified' : 'SMS OTP Verified'}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-500">Step 2 Physical Scan:</span>
-                <span className="font-bold text-emerald-700">✓ Staff QR Badge / Beacon Scanned</span>
+                <span className="text-slate-500">Step 3 Beacon Scan:</span>
+                <span className="font-bold text-emerald-700">✓ Physical Beacon Authenticated</span>
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-slate-200">
                 <span className="text-slate-500">Official Timestamp:</span>
                 <span className="font-mono font-bold text-slate-900">
-                  {todayRecord?.clockInTime || 'Just now'}
+                  {todayRecord?.clockInTime || 'Recorded Just Now'}
                 </span>
               </div>
             </div>
 
-            {/* Done / Clock Next Staff Button */}
             <button
+              type="button"
               onClick={() => {
-                setAuthStep('pin_entry');
-                setPinInput('');
-                setOtpInput('');
-                setFaceVerified(false);
-                setIsScanningBadge(false);
+                setAuthStep('staff_id_entry');
+                setStaffIdInput('');
                 setSelectedStaff(null);
-                soundSynthesizer.playResetWhoosh();
+                setTodayRecord(null);
+                setFeedback(null);
               }}
-              style={{ backgroundColor: theme.primary }}
-              className="w-full h-12 text-white font-black text-xs rounded-full shadow-sm hover:opacity-90 transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition active:scale-95 cursor-pointer"
             >
-              <span>Done / Clock Next Staff</span>
-              <span>→</span>
+              Clock In Another Staff Member
             </button>
           </div>
         )}
 
-        {/* QUICK STAFF NAME LIST CHIPS (toggleable via * key or button) */}
-        <div className="border border-slate-100 rounded-2xl p-2.5 bg-slate-50/60">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">
-              Staff Directory Quick Select ({teachingStaff.length})
-            </span>
-            <button
-              onClick={() => setShowStaffList(!showStaffList)}
-              className="text-[9px] font-bold text-slate-500 hover:text-slate-900"
-            >
-              {showStaffList ? 'Hide ▲' : 'Show All ▼'}
-            </button>
-          </div>
-
-          <div
-            className={`flex flex-wrap gap-1 ${
-              showStaffList ? 'max-h-40 overflow-y-auto' : 'max-h-16 overflow-hidden'
-            }`}
-          >
-            {teachingStaff.slice(0, showStaffList ? teachingStaff.length : 6).map((staff: StaffMember) => (
-              <button
-                key={staff.staffId}
-                onClick={() => handleSelectStaff(staff)}
-                className="text-[10px] px-2 py-1 rounded-lg border font-semibold transition"
-                style={{
-                  backgroundColor:
-                    selectedStaff?.staffId === staff.staffId ? theme.primary : '#FFFFFF',
-                  color: selectedStaff?.staffId === staff.staffId ? '#FFFFFF' : '#334155',
-                  borderColor:
-                    selectedStaff?.staffId === staff.staffId ? theme.primary : '#E2E8F0',
-                }}
-              >
-                {staff.name.split(' ')[0]} {staff.name.split(' ')[1]?.[0]}.
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* STEP 2: Common Room TV QR scanner card */}
-        <div
-          onClick={() => {
-            if (selectedStaff) setIsScannerOpen(true);
-          }}
-          className="p-3 bg-[#FEF3C7] border border-[#FDE68A] rounded-2xl cursor-pointer hover:bg-amber-100 transition active:scale-95 duration-100 space-y-1.5"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-amber-900 leading-tight">
-              Step 2: Point camera at Common Room TV QR
-            </span>
-            <Camera className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-          </div>
-
-          {/* Viewfinder Placeholder with corner brackets */}
-          <div className="h-12 bg-white/80 border border-dashed border-amber-400 rounded-xl flex items-center justify-center relative overflow-hidden">
-            <div className="absolute top-1.5 left-2 w-2.5 h-2.5 border-t-2 border-l-2 border-amber-600" />
-            <div className="absolute top-1.5 right-2 w-2.5 h-2.5 border-t-2 border-r-2 border-amber-600" />
-            <div className="absolute bottom-1.5 left-2 w-2.5 h-2.5 border-b-2 border-l-2 border-amber-600" />
-            <div className="absolute bottom-1.5 right-2 w-2.5 h-2.5 border-b-2 border-r-2 border-amber-600" />
-            <span className="text-[10px] font-bold text-amber-800 tracking-wide flex items-center gap-1.5">
-              <Scan className="w-3.5 h-3.5" />
-              <span>Tap to Open Live QR Camera</span>
-            </span>
-          </div>
-        </div>
-
-        {/* SUCCESS FOOTER PILL */}
-        {todayRecord && (
+        {/* TODAY'S PREVIOUS RECORD BADGE (If already clocked in today) */}
+        {todayRecord && authStep === 'staff_id_entry' && (
           <div className="bg-[#FEF9C3] border border-amber-200 rounded-full px-3 py-1.5 flex items-center justify-between text-[10px] font-bold text-amber-950">
             <div className="flex items-center gap-1.5 truncate">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span className="truncate">
-                Success! Recorded at {todayRecord.clockInTime} • {todayRecord.date}
+                Recorded at {todayRecord.clockInTime} • {todayRecord.date}
               </span>
             </div>
-            {todayRecord.clockOutTime ? (
-              <span className="text-[9px] text-slate-500 font-mono shrink-0 ml-1">
-                Out: {todayRecord.clockOutTime}
-              </span>
-            ) : (
-              <span
-                className="text-[9px] px-2 py-0.5 rounded-full text-white font-bold shrink-0 ml-1"
-                style={{ backgroundColor: theme.primary }}
-              >
-                Present
-              </span>
-            )}
+            <span
+              className="text-[9px] px-2 py-0.5 rounded-full text-white font-bold shrink-0 ml-1"
+              style={{ backgroundColor: theme.primary }}
+            >
+              Present
+            </span>
           </div>
         )}
       </div>
-
-      {/* Optical QR Scanner Modal */}
-      <QrDoorScannerModal
-        isOpen={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        schoolCode={schoolCode || config.schoolCode}
-        classrooms={storageEngine.getClassrooms()}
-        onSelectClassroom={() => {}}
-        onScanCampusBeacon={handleBeaconScanned}
-      />
     </div>
   );
 }

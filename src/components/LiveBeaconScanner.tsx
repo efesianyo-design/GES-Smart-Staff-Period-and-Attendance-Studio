@@ -145,7 +145,7 @@ export const LiveBeaconScanner: React.FC<LiveBeaconScannerProps> = ({
     animFrameRef.current = requestAnimationFrame(scanFrame);
   }, [handleDecodedString]);
 
-  // Start real camera stream
+  // Start real camera stream with fallback constraints
   const startCamera = useCallback(async () => {
     stopCamera();
     setCameraError(null);
@@ -156,22 +156,45 @@ export const LiveBeaconScanner: React.FC<LiveBeaconScannerProps> = ({
     }
 
     try {
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      };
+      let stream: MediaStream | null = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facingMode },
+            audio: false,
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (!stream) {
+        throw new Error('Could not initialize video stream');
+      }
+
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.setAttribute('playsinline', 'true');
-        await videoRef.current.play();
+        videoRef.current.muted = true;
+        try {
+          await videoRef.current.play();
+        } catch (playErr) {
+          console.warn('[Camera] Autoplay caught notice:', playErr);
+        }
       }
 
       setCameraActive(true);
@@ -181,8 +204,8 @@ export const LiveBeaconScanner: React.FC<LiveBeaconScannerProps> = ({
       console.warn('Camera access denied or unavailable:', err);
       setCameraError(
         err?.message?.includes('Permission denied')
-          ? 'Camera permission denied. Please allow camera permissions in your phone browser, or upload a photo of the beacon QR.'
-          : 'Camera device unavailable. You can upload a photo of the Beacon QR code.'
+          ? 'Camera permission denied. Please allow camera permissions in your phone browser to authenticate.'
+          : 'Camera device unavailable. Please ensure your device camera is functional.'
       );
       setCameraActive(false);
     }
@@ -195,34 +218,6 @@ export const LiveBeaconScanner: React.FC<LiveBeaconScannerProps> = ({
     };
   }, [startCamera, stopCamera]);
 
-  // Photo upload decoder fallback
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imgData.data, imgData.width, imgData.height);
-        if (code && code.data) {
-          handleDecodedString(code.data);
-        } else {
-          soundSynthesizer.playOutOfBoundsBuzzer();
-          setCameraError('No valid Beacon QR code found in uploaded image. Please try again.');
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
 
   return (
     <div className="space-y-3">
@@ -234,11 +229,12 @@ export const LiveBeaconScanner: React.FC<LiveBeaconScannerProps> = ({
         {/* Live Video Feed */}
         <video
           ref={videoRef}
+          autoPlay
+          muted
+          playsInline
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
             cameraActive ? 'opacity-100' : 'opacity-0'
           }`}
-          muted
-          playsInline
         />
 
         {cameraActive ? (
@@ -330,23 +326,6 @@ export const LiveBeaconScanner: React.FC<LiveBeaconScannerProps> = ({
         </div>
       )}
 
-      {/* Alternative Photo Upload Option */}
-      <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-        <div className="flex items-center gap-2 text-slate-700">
-          <Upload className="w-4 h-4 text-indigo-600" />
-          <span className="text-[11px] font-medium">Or upload photo of Beacon QR:</span>
-        </div>
-        <label className="cursor-pointer px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-lg transition active:scale-95">
-          <span>Choose Photo</span>
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handlePhotoUpload}
-            className="hidden"
-          />
-        </label>
-      </div>
     </div>
   );
 };

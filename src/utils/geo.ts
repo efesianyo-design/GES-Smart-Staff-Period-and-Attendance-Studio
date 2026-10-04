@@ -162,10 +162,49 @@ export function calibrateCampusGateGps(
 
   try {
     localStorage.setItem(`ges_calibrated_gps_${codeKey}`, JSON.stringify(payload));
+    localStorage.setItem('ges_calibrated_gps_active', JSON.stringify(payload));
+    
+    // Also sync into stored school configuration so all system views sync
+    const storedConfigRaw = localStorage.getItem('ges_school_config_v1');
+    if (storedConfigRaw) {
+      try {
+        const parsed = JSON.parse(storedConfigRaw);
+        localStorage.setItem(
+          'ges_school_config_v1',
+          JSON.stringify({ ...parsed, lat, lng, radiusMeters })
+        );
+      } catch {}
+    }
+
     window.dispatchEvent(new CustomEvent(CALIBRATED_COORDS_EVENT, { detail: { schoolCode: codeKey, ...payload } }));
   } catch (err) {
     console.warn('Failed to save campus GPS calibration:', err);
   }
+}
+
+/**
+ * Finds the closest registered Ghana Senior High School to the given GPS coordinates
+ */
+export function findNearestSchool(
+  lat: number,
+  lng: number
+): { code: string; name: string; distanceKm: number } | null {
+  let nearest: { code: string; name: string; distanceKm: number } | null = null;
+  let minDistance = Infinity;
+
+  for (const [code, info] of Object.entries(OFFICIAL_SCHOOL_COORDINATES)) {
+    const dist = calculateHaversineDistance({ lat, lng }, { lat: info.lat, lng: info.lng });
+    if (dist < minDistance) {
+      minDistance = dist;
+      nearest = {
+        code,
+        name: info.schoolName,
+        distanceKm: Math.round(dist / 100) / 10,
+      };
+    }
+  }
+
+  return nearest;
 }
 
 /**

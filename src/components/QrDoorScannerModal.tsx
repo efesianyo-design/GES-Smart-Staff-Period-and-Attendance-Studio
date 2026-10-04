@@ -272,21 +272,6 @@ export const QrDoorScannerModal: React.FC<QrDoorScannerModalProps> = ({
     }, 400);
   };
 
-  // Simulate Instant Kiosk Beacon Scan
-  const handleSimulateBeaconScan = () => {
-    const beacon = generateBeaconToken(schoolCode, 20);
-    soundSynthesizer.playScanBeep();
-    setBeaconSuccess(true);
-    setTimeout(() => {
-      if (onScanCampusBeacon) {
-        onScanCampusBeacon(beacon.token);
-      }
-      stopCamera();
-      onClose();
-      setBeaconSuccess(false);
-    }, 500);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-3 sm:p-4">
       <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:p-5 shadow-2xl text-slate-100 flex flex-col max-h-[92dvh] overflow-hidden">
@@ -424,16 +409,6 @@ export const QrDoorScannerModal: React.FC<QrDoorScannerModalProps> = ({
           <div className="mt-3 flex-1 overflow-y-auto no-scrollbar space-y-2">
             <div className="flex items-center justify-between text-[11px] text-slate-400">
               <span className="font-semibold uppercase tracking-wider">Simulate Classroom Door Scan:</span>
-              <label className="cursor-pointer text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                <Upload className="w-3 h-3" />
-                <span>Scan Photo</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {classrooms.map((cls) => {
@@ -479,38 +454,16 @@ export const QrDoorScannerModal: React.FC<QrDoorScannerModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="flex-1 py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-medium text-slate-300 flex items-center justify-center gap-1.5 cursor-pointer transition">
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload Photo</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
-
-              <button
-                type="button"
-                onClick={handleSimulateBeaconScan}
-                className={`flex-[2] py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition ${
-                  beaconSuccess
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30'
-                }`}
-              >
-                {beaconSuccess ? (
-                  <>
-                    <ShieldCheck className="w-4 h-4 text-white" />
-                    <span>Presence Authenticated!</span>
-                  </>
-                ) : (
-                  <>
-                    <Radio className="w-4 h-4" />
-                    <span>Instant Authenticate Beacon</span>
-                  </>
-                )}
-              </button>
+              {!cameraActive && (
+                <button
+                  type="button"
+                  onClick={startCamera}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition shadow-md shadow-emerald-600/30"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Start Camera</span>
+                </button>
+              )}
             </div>
           </div>
         )}

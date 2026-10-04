@@ -8,6 +8,8 @@ interface FirebasePhoneAuthBoxProps {
   staffPhone?: string;
   staffName?: string;
   staffId?: string;
+  initialStep?: 'phone' | 'otp';
+  devOtp?: string;
   onVerified: () => void;
   onOfflineQueued?: () => void;
   schoolCode?: string;
@@ -16,19 +18,23 @@ interface FirebasePhoneAuthBoxProps {
 export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
   staffPhone = '+233248793773',
   staffName = 'Kwame Amponsah',
-  staffId = 'GES-T-0428',
-  schoolCode = 'PREMPEH01',
+  staffId = '1304201',
+  initialStep = 'phone',
+  devOtp,
+  schoolCode = 'MAWULI01',
   onVerified,
   onOfflineQueued,
 }) => {
   const [phoneNumber, setPhoneNumber] = useState<string>(staffPhone);
-  const [step, setStep] = useState<'phone' | 'otp' | 'success'>('phone');
+  const [step, setStep] = useState<'phone' | 'otp' | 'success'>(initialStep);
   const [otpInput, setOtpInput] = useState<string>('');
-  const [generatedOtp, setGeneratedOtp] = useState<string | null>(null);
+  const [generatedOtp, setGeneratedOtp] = useState<string | null>(devOtp || null);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState<number>(0);
+  const [successMsg, setSuccessMsg] = useState<string | null>(
+    initialStep === 'otp' ? `🚀 Priority SMS dispatched to ${staffPhone}! Arrives in ~2-4s.` : null
+  );
+  const [cooldown, setCooldown] = useState<number>(initialStep === 'otp' ? 45 : 0);
   const [showOverrideModal, setShowOverrideModal] = useState<boolean>(false);
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -37,6 +43,15 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
   useEffect(() => {
     setPhoneNumber(staffPhone);
   }, [staffPhone]);
+
+  useEffect(() => {
+    if (initialStep === 'otp') {
+      setStep('otp');
+      setCooldown(45);
+      if (devOtp) setGeneratedOtp(devOtp);
+      setSuccessMsg(`🚀 Priority SMS dispatched to ${staffPhone}! Arrives in ~2-4s.`);
+    }
+  }, [initialStep, staffPhone, devOtp]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -128,7 +143,7 @@ export const FirebasePhoneAuthBox: React.FC<FirebasePhoneAuthBoxProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staffId: 'GES-T-0428',
+          staffId: staffId || '1304201',
           otp: clean,
           phone: phoneNumber,
           staffName,

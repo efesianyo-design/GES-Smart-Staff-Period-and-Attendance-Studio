@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard,
   Building2,
@@ -22,6 +22,12 @@ import {
   MapPin,
   ExternalLink,
   ShieldAlert,
+  GraduationCap,
+  Utensils,
+  HeartPulse,
+  Network,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
 import { SchoolConfig, GateAttendanceRecord } from '../types';
 import { storageEngine } from '../utils/storage';
@@ -31,12 +37,19 @@ import { downloadCSV } from '../utils/csv';
 import { UnclockAuditHub } from './UnclockAuditHub';
 import { SchoolBrandingSettings } from './SchoolBrandingSettings';
 import { AdminReportsMode } from './AdminReportsMode';
+import { OrganogramHierarchyManager } from './OrganogramHierarchyManager';
+import { PrincipalExecutiveConsole } from './PrincipalExecutiveConsole';
+import { AssistantHeadAcademicConsole } from './AssistantHeadAcademicConsole';
+import { AssistantHeadDomesticConsole } from './AssistantHeadDomesticConsole';
+import { AssistantHeadWelfareConsole } from './AssistantHeadWelfareConsole';
+import { TimetableModal } from './TimetableModal';
 import {
   SchoolsCampusTab,
   StaffUploadsTab,
   AttendanceAuditTab,
   PresenceTrackingTab,
   MessagesBroadcastTab,
+  SystemAuditTab,
 } from './SchoolAdminTabs';
 import { useSchoolTheme } from '../hooks/useSchoolTheme';
 
@@ -106,8 +119,26 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
   onLogout,
 }) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { theme } = useSchoolTheme();
-  const [activeMenu, setActiveMenu] = useState<string>('Dashboard');
+
+  const initialMenu = useMemo(() => {
+    const tabParam = searchParams.get('tab');
+    const consoleParam = searchParams.get('console');
+    if (tabParam === 'organogram' || consoleParam === 'organogram') return 'Organogram & Hierarchy';
+    if (tabParam === 'reports') return 'Reports';
+    return 'Dashboard';
+  }, [searchParams]);
+
+  const [activeMenu, setActiveMenu] = useState<string>(initialMenu);
+  const [showTimetableModal, setShowTimetableModal] = useState(false);
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    const consoleParam = searchParams.get('console');
+    if (tabParam === 'organogram' || consoleParam === 'organogram') setActiveMenu('Organogram & Hierarchy');
+  }, [searchParams]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilterCampus, setSelectedFilterCampus] = useState<string>('all');
   const [incidents, setIncidents] = useState<SecurityIncident[]>(() => securityEngine.getIncidents());
@@ -120,6 +151,35 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
   });
   const [isExporting, setIsExporting] = useState(false);
   const [unclockRefreshCount, setUnclockRefreshCount] = useState(0);
+
+  // Real-time Active and Completed Period Teaching Sessions
+  const [activePeriodSessions, setActivePeriodSessions] = useState(() => storageEngine.getActiveClassSessions());
+  const [periodSessions, setPeriodSessions] = useState(() => storageEngine.getPeriodSessions());
+
+  useEffect(() => {
+    const handleSessionsUpdate = () => {
+      setActivePeriodSessions(storageEngine.getActiveClassSessions());
+      setPeriodSessions(storageEngine.getPeriodSessions());
+    };
+    window.addEventListener('ges_active_sessions_changed', handleSessionsUpdate);
+    window.addEventListener('ges_session_saved', handleSessionsUpdate);
+    return () => {
+      window.removeEventListener('ges_active_sessions_changed', handleSessionsUpdate);
+      window.removeEventListener('ges_session_saved', handleSessionsUpdate);
+    };
+  }, []);
+
+  // Late period sessions list (teachers who entered after scheduled period start time)
+  const latePeriodSessions = useMemo(() => {
+    const activeLate = activePeriodSessions.filter((s) => s.isLateArrival);
+    const completedLate = periodSessions.filter((s) => s.isLateArrival);
+    // Combine and deduplicate
+    const map = new Map<string, any>();
+    [...activeLate, ...completedLate].forEach((s) => {
+      map.set(`${s.teacherStaffId}-${s.periodNumber}-${s.actualStartTime}`, s);
+    });
+    return Array.from(map.values());
+  }, [activePeriodSessions, periodSessions]);
 
   // Sync actual real attendance records from local storage if available for this school
   useEffect(() => {
@@ -228,22 +288,39 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
     }, 600);
   };
 
-  const navMenuItems = [
-    { label: 'Dashboard', icon: LayoutDashboard },
-    { label: 'Schools', icon: Building2 },
-    { label: 'Staff', icon: Users },
-    { label: 'Attendance', icon: UserCheck },
-    { label: 'Presence Tracking', icon: MapPin },
-    { label: 'Reports', icon: FileSpreadsheet },
-    { label: 'Analytics', icon: BarChart3 },
-    { label: 'Messages', icon: MessageSquare },
-    { label: 'Settings', icon: Settings },
+  const navSections = [
+    {
+      title: 'COMMAND OVERVIEW',
+      items: [
+        { label: 'Dashboard', icon: LayoutDashboard, badge: null },
+      ],
+    },
+    {
+      title: 'GOVERNANCE & HIERARCHY',
+      items: [
+        { label: 'Organogram & Hierarchy', icon: Network, badge: 'Privilege' },
+      ],
+    },
+    {
+      title: 'OPERATIONAL PORTALS',
+      items: [
+        { label: 'Schools', icon: Building2, badge: null },
+        { label: 'Staff', icon: Users, badge: null },
+        { label: 'Attendance', icon: UserCheck, badge: null },
+        { label: 'Presence Tracking', icon: MapPin, badge: null },
+        { label: 'Reports', icon: FileSpreadsheet, badge: null },
+        { label: 'Analytics', icon: BarChart3, badge: null },
+        { label: 'Messages', icon: MessageSquare, badge: null },
+        { label: 'Audit Trail', icon: ShieldCheck, badge: 'New' },
+        { label: 'Settings', icon: Settings, badge: null },
+      ],
+    },
   ];
 
   return (
     <div className="flex h-screen w-full bg-[#F8FAFC] overflow-hidden font-sans text-slate-800">
       {/* 1. LEFT SIDEBAR: width 250px, background #0F172A dark, full height */}
-      <aside className="w-[250px] shrink-0 h-full bg-[#0F172A] text-slate-200 flex flex-col justify-between border-r border-slate-800 select-none z-20">
+      <aside className="w-[260px] shrink-0 h-full bg-[#0F172A] text-slate-200 flex flex-col justify-between border-r border-slate-800 select-none z-20">
         <div className="flex flex-col">
           {/* Logo Top: Logo GES + "GHANA EDUCATION SERVICE • ADMIN PORTAL" */}
           <div className="p-4 border-b border-slate-800 flex items-center gap-3">
@@ -276,38 +353,53 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
             </div>
           </div>
 
-          {/* Menu: Dashboard, Schools, Staff, Attendance, Presence Tracking, Reports, Analytics, Messages, Settings */}
-          <nav className="p-3 space-y-1 overflow-y-auto max-h-[calc(100vh-280px)]">
-            {navMenuItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeMenu === item.label;
-              return (
-                <button
-                  key={item.label}
-                  onClick={() => {
-                    setActiveMenu(item.label);
-                    if (item.label === 'Staff') navigate('/master_roster');
-                    if (item.label === 'Reports') navigate('/admin');
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition duration-150 text-left ${
-                    isActive
-                      ? 'bg-yellow-400 text-slate-950 font-black shadow-md shadow-yellow-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-slate-950' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+          {/* Categorized Navigation: Command, Executive Consoles, Governance, Operations */}
+          <nav className="p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-270px)]">
+            {navSections.map((sec) => (
+              <div key={sec.title} className="space-y-1">
+                <span className="px-2 text-[9px] font-black tracking-wider uppercase text-slate-500 block">
+                  {sec.title}
+                </span>
+                <div className="space-y-0.5">
+                  {sec.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeMenu === item.label;
+                    return (
+                      <button
+                        key={item.label}
+                        onClick={() => {
+                          setActiveMenu(item.label);
+                          if (item.label === 'Staff') navigate('/master_roster');
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 text-left ${
+                          isActive
+                            ? 'bg-yellow-400 text-slate-950 font-black shadow-md shadow-yellow-500/20'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800/70'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-slate-950' : 'text-slate-400'}`} />
+                          <span className="truncate">{item.label}</span>
+                        </div>
+                        {item.badge && !isActive && (
+                          <span className="px-1.5 py-0.2 text-[8px] font-bold rounded-md bg-slate-800 text-slate-400 border border-slate-700">
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
 
             {/* Direct Link to Super Admin Console if user has super_admin permission */}
             {isSuperAdmin && (
               <button
                 onClick={() => navigate('/super_admin')}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold text-indigo-400 hover:bg-slate-800/70 transition"
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs font-bold text-indigo-400 hover:bg-slate-800/70 transition mt-2"
               >
-                <ShieldAlert className="w-4 h-4 text-indigo-400" />
+                <ShieldAlert className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Super Admin Hub</span>
               </button>
             )}
@@ -316,14 +408,14 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
             <div className="pt-2 border-t border-slate-800 mt-2 space-y-1">
               <button
                 onClick={() => window.open('/kiosk', '_blank')}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                className="w-full flex items-center justify-between px-2.5 py-1 text-[10px] text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
               >
                 <span>📺 Common Room Kiosk</span>
                 <ExternalLink className="w-3 h-3" />
               </button>
               <button
                 onClick={() => window.open('/attendance?type=teaching', '_blank')}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                className="w-full flex items-center justify-between px-2.5 py-1 text-[10px] text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
               >
                 <span>📱 Staff BYOD Portal</span>
                 <ExternalLink className="w-3 h-3" />
@@ -366,6 +458,15 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
 
       {/* 2. MAIN CONTENT AREA: background #F8FAFC, padding */}
       <main className="flex-1 h-full overflow-y-auto bg-[#F8FAFC] p-5 flex flex-col space-y-5">
+        {/* ORGANOGRAM & OPERATIONAL VIEWS */}
+        {activeMenu === 'Organogram & Hierarchy' && (
+          <OrganogramHierarchyManager
+            config={currentSchoolConfig}
+            onOpenConsole={(role) => {
+              navigate(`/leadership?console=${role}`);
+            }}
+          />
+        )}
         {activeMenu === 'Settings' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -498,6 +599,10 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
           <MessagesBroadcastTab config={currentSchoolConfig} />
         )}
 
+        {activeMenu === 'Audit Trail' && (
+          <SystemAuditTab config={currentSchoolConfig} />
+        )}
+
         {activeMenu === 'Dashboard' && (
           <>
         {/* TOP HEADER:
@@ -581,6 +686,63 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
           </div>
         )}
 
+        {/* TEACHER LESSON LATE START ALERTS (HEADMASTER & ASSISTANT HEADMASTER LIVE DOSSIER) */}
+        {latePeriodSessions.length > 0 && (
+          <div className="bg-amber-50/90 border-2 border-amber-400 rounded-2xl p-4 shadow-sm space-y-3 animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <AlertTriangle className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-950">
+                    Teacher Lesson Late Arrival Flag • Headmaster &amp; Assistant Headmaster Action Required
+                  </h3>
+                  <p className="text-[11px] text-amber-800 font-medium">
+                    Automated Timetable Audit: Teachers who entered class after the scheduled start time
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-black font-mono px-2.5 py-1 rounded-full bg-amber-200 text-amber-950 border border-amber-300 shrink-0">
+                ⚠️ {latePeriodSessions.length} Late Lesson {latePeriodSessions.length === 1 ? 'Start' : 'Starts'} Flagged
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {latePeriodSessions.slice(0, 4).map((s: any, idx: number) => (
+                <div
+                  key={`${s.id || idx}`}
+                  className="p-3 bg-white border border-amber-300 rounded-xl flex items-start justify-between shadow-2xs gap-3"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-xs text-slate-900">{s.teacherName}</span>
+                      <span className="font-mono text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded font-bold">
+                        {s.teacherStaffId}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 font-medium">
+                      Period {s.periodNumber} • {s.subject || 'Academic Lesson'} ({s.className})
+                    </p>
+                    <p className="text-[10px] text-amber-800 font-mono">
+                      Scheduled: <strong>{s.scheduledStartTime || '07:00'} AM</strong> → Actual Entry: <strong>{s.actualStartTime} AM</strong>
+                    </p>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className="px-2.5 py-1 rounded-md bg-rose-100 border border-rose-300 text-rose-900 font-black text-[10px] uppercase inline-block shadow-2xs">
+                      ⚠️ {s.lateMinutes || 0} MINS LATE
+                    </span>
+                    <span className="block text-[9px] text-slate-400 font-bold mt-1">
+                      {s.isMerged ? 'Joint Merged' : 'Single Class'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* 4 KPI CARDS:
             Total Staff: 1,248 (+12 this month)
             Present: 1,102 (88.3%)
@@ -636,10 +798,10 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
               </div>
             </div>
             <div className="text-[48px] font-black text-amber-500 tracking-tight leading-none">
-              84
+              {84 + latePeriodSessions.length}
             </div>
             <p className="text-xs font-bold text-amber-600 flex items-center gap-1">
-              6.7% late • -5 from yesterday
+              {latePeriodSessions.length > 0 ? `Includes ${latePeriodSessions.length} late period starts` : '6.7% late • Gate & Period'}
             </p>
           </div>
 
@@ -840,6 +1002,21 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
               </div>
 
               <div className="space-y-2.5">
+                {/* Dynamic Late Teacher Period Alerts */}
+                {latePeriodSessions.slice(0, 2).map((ls: any, i: number) => (
+                  <div key={`alert-late-${i}`} className="p-3 rounded-xl bg-amber-50 border-2 border-amber-300 flex items-start gap-2.5">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <strong className="font-bold text-amber-900 block">
+                        ⚠️ Late Lesson Entry: {ls.teacherName} (+{ls.lateMinutes}m)
+                      </strong>
+                      <span className="text-[10px] text-amber-800 font-mono block">
+                        Period {ls.periodNumber} ({ls.className}) • Sched: {ls.scheduledStartTime || '07:00'} → In: {ls.actualStartTime}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
                 {/* Alert 1: "Late staff: 5 at Kumasi Tech" orange */}
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
                   <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -904,6 +1081,12 @@ export const AdminCampusDashboard: React.FC<AdminCampusDashboardProps> = ({
           </div>
         </footer>
       </main>
+
+      {/* Timetable Modal */}
+      <TimetableModal
+        isOpen={showTimetableModal}
+        onClose={() => setShowTimetableModal(false)}
+      />
     </div>
   );
 };

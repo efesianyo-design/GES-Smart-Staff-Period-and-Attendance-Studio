@@ -83,7 +83,6 @@ export const MasterRosterMode: React.FC<MasterRosterModeProps> = ({
   const [parsedPreview, setParsedPreview] = useState<Partial<StaffMember>[]>([]);
   const [classroomParsedPreview, setClassroomParsedPreview] = useState<Partial<Classroom>[]>([]);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-
   const todayStr = getTodayDateString();
 
   // Departments for filtering
@@ -645,10 +644,12 @@ export const MasterRosterMode: React.FC<MasterRosterModeProps> = ({
                   </div>
                   <input
                     type="text"
+                    pattern="[0-9]*"
+                    inputMode="numeric"
                     required
                     value={newStaffId}
-                    onChange={(e) => setNewStaffId(e.target.value)}
-                    placeholder={newCategory === 'permanent' ? 'e.g. 1084291' : 'e.g. NSS-2024-041'}
+                    onChange={(e) => setNewStaffId(e.target.value.replace(/\D/g, ''))}
+                    placeholder={newCategory === 'permanent' ? 'e.g. 1084291' : 'e.g. 2024041'}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono focus:outline-none focus:border-emerald-500"
                   />
                 </div>
@@ -754,6 +755,7 @@ export const MasterRosterMode: React.FC<MasterRosterModeProps> = ({
                 onClick={() => {
                   setUploadTab('staff');
                   setCsvText('');
+                  setParsedPreview([]);
                   soundSynthesizer.playKeypadBeep();
                 }}
                 className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
@@ -763,13 +765,14 @@ export const MasterRosterMode: React.FC<MasterRosterModeProps> = ({
                 }`}
               >
                 <Users className="w-3.5 h-3.5" />
-                Staff Directory ({parsedPreview.length ? `${parsedPreview.length} loaded` : 'CSV'})
+                Staff Roster ({parsedPreview.length ? `${parsedPreview.length} loaded` : 'CSV'})
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setUploadTab('classrooms');
                   setCsvText('');
+                  setClassroomParsedPreview([]);
                   soundSynthesizer.playKeypadBeep();
                 }}
                 className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition ${

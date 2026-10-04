@@ -28,6 +28,17 @@ export function checkRouteAccess(pathname: string, user: { role: UserRole }): Ro
     }
   }
 
+  // Protect /leadership routes (Requires school_admin or super_admin)
+  if (normPath.startsWith('/leadership')) {
+    if (user.role !== 'school_admin' && user.role !== 'super_admin') {
+      return {
+        allowed: false,
+        redirectTo: '/school/login?from=' + encodeURIComponent(pathname),
+        reason: 'Restricted to Institutional Leadership.',
+      };
+    }
+  }
+
   // Protect /super_admin or /super-admin routes
   if (normPath.startsWith('/super_admin') || normPath.startsWith('/super-admin')) {
     if (user.role !== 'super_admin') {
@@ -62,30 +73,13 @@ export const RouteGuard: React.FC<{
   requiredRoles?: UserRole[];
   children: React.ReactNode;
 }> = ({ requiredRoles, children }) => {
-  const { user, loginAsSchoolAdmin, loginAsSuperAdmin } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
-
-  // If visiting directly, auto-grant appropriate role for preview & testing
-  React.useEffect(() => {
-    const path = location.pathname.toLowerCase();
-    if (path.startsWith('/admin') && user.role === 'guest') {
-      loginAsSchoolAdmin('GES-VR-HO-002', '1234');
-    } else if ((path.startsWith('/super_admin') || path.startsWith('/super-admin')) && user.role !== 'super_admin') {
-      loginAsSuperAdmin('1234');
-    }
-  }, [location.pathname, user.role]);
 
   // If specific roles required:
   if (requiredRoles && !requiredRoles.includes(user.role)) {
     const path = location.pathname.toLowerCase();
-    // If the path is /admin or /super_admin, allow render directly without redirect loop
-    if (path.startsWith('/admin') && requiredRoles.includes('school_admin')) {
-      return React.createElement(React.Fragment, null, children);
-    }
-    if ((path.startsWith('/super_admin') || path.startsWith('/super-admin')) && requiredRoles.includes('super_admin')) {
-      return React.createElement(React.Fragment, null, children);
-    }
-
+    
     if (requiredRoles.includes('school_admin')) {
       return React.createElement(Navigate, {
         to: `/school/login?from=${encodeURIComponent(location.pathname)}`,

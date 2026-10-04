@@ -143,22 +143,6 @@ export default function SchoolLoginPage() {
 
         {/* Console Separation Navigation */}
         <div className="pt-3 border-t border-slate-800 space-y-3">
-          <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-indigo-400" />
-              <div className="text-[11px] text-slate-300">
-                GES National Directorate Officer?
-              </div>
-            </div>
-            <Link
-              to="/super/login"
-              className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1"
-            >
-              <span>Go to Super Admin Login</span>
-              <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-
           <div className="flex items-center justify-between text-xs text-slate-400 pt-1 px-1">
             <Link to="/attendance" className="hover:text-emerald-400 transition">
               ← Staff Attendance

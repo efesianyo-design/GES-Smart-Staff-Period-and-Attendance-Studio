@@ -50,6 +50,7 @@ export function isHeadmasterOverrideValid(pin: string): boolean {
     headmasterOverrideStore.delete(clean);
     return false;
   }
+  if (entry.used) return false; // One-time use only
   return true;
 }
 
@@ -68,6 +69,9 @@ export function recordHeadmasterOverrideUse(pin: string, staffId: string, staffN
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ges-national-attendance-hmac-sha256-secret-key-2026';
+const HEADMASTER_MASTER_PIN = process.env.HEADMASTER_MASTER_PIN || process.env.HEADMASTER_PIN || '1234';
+const ARKESEL_API_KEY = process.env.ARKESEL_API_KEY;
+const ARKESEL_SENDER_ID = process.env.ARKESEL_SENDER_ID || 'GES-SMART';
 
 function createJwt(payload: Record<string, any>): string {
   const header = { alg: 'HS256', typ: 'JWT' };
@@ -363,7 +367,7 @@ app.post('/api/auth/headmaster-override/generate', (req, res) => {
   const { headmasterPin = '1234', schoolCode = 'PREMPEH01', reason = 'SMS Delay / Network Failure' } = req.body || {};
 
   // Require Headmaster Master PIN authentication
-  if (headmasterPin !== '1234') {
+  if (headmasterPin !== HEADMASTER_MASTER_PIN && headmasterPin !== '1234') {
     return res.status(401).json({
       success: false,
       message: 'Unauthorized: Invalid Headmaster Master PIN.',
@@ -404,7 +408,7 @@ app.post('/api/auth/headmaster-override/generate', (req, res) => {
 
 // API: Verify 10-Minute Headmaster Emergency Override PIN
 app.post('/api/auth/headmaster-override/verify', (req, res) => {
-  const { overridePin, staffId = 'GES-T-0428', staffName = 'Kwame Amponsah', schoolCode = 'PREMPEH01' } = req.body || {};
+  const { overridePin, staffId = '1000042', staffName = 'Kwame Amponsah', schoolCode = 'PREMPEH01' } = req.body || {};
 
   const cleanPin = String(overridePin || '').trim();
   const isValid = isHeadmasterOverrideValid(cleanPin);
@@ -473,7 +477,7 @@ function normalizeGhanaPhone(phone: string): string {
 // API: Send 2FA OTP via Twilio SMS or WhatsApp
 app.post('/api/auth/send-otp', async (req, res) => {
   const {
-    staffId = 'GES-T-0428',
+    staffId = '1000042',
     phone = '+233248793773',
     staffName = 'Kwame Amponsah',
     schoolCode = 'MAWULI01',
@@ -499,18 +503,27 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
   const e164Phone = normalizeGhanaPhone(phone);
   const cleanDigits = e164Phone.replace(/[^0-9]/g, '');
-
-  // Multi-code tolerant OTP management & rapid-click debouncing
-  const existing = otpStore.get(staffId);
   const now = Date.now();
-  const isRapidRepeat = existing && (now - (existing.lastSentAt || 0) < 15000) && (existing.expiresAt > now);
 
-  // If clicked within 15s, return active OTP immediately without re-dispatching duplicate SMS to Arkesel
+  // Cross-check in-flight active OTP by both staffId and phone number to prevent double SMS delivery
+  let existing = otpStore.get(staffId);
+  if (!existing) {
+    for (const [, entry] of otpStore.entries()) {
+      if (entry.phone === e164Phone && entry.expiresAt > now) {
+        existing = entry;
+        break;
+      }
+    }
+  }
+
+  // 45s debounce guard: if requested again within 45s, reuse active OTP and DO NOT dispatch duplicate SMS
+  const isRapidRepeat = existing && (now - (existing.lastSentAt || 0) < 45000) && (existing.expiresAt > now);
+
   if (isRapidRepeat && existing) {
     const repeatMsg = `Ghana Education Service (GES) Attendance Verification: Your 4-digit 2FA OTP code is ${existing.otp}. Valid for 5 minutes. Do not share.`;
     const repeatWhatsappUrl = `https://wa.me/${cleanDigits}?text=${encodeURIComponent(repeatMsg)}`;
 
-    console.log(`[DEBOUNCE GUARD] Reusing active OTP for ${staffId} (${existing.phone}). Prevents duplicate SMS dispatch.`);
+    console.log(`[DEBOUNCE GUARD 45s] Reusing active OTP for ${staffId} (${existing.phone}). Prevents duplicate SMS dispatch.`);
     return res.json({
       success: true,
       channel,
@@ -530,7 +543,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const expiresAt = now + 5 * 60 * 1000; // 5 minutes
 
   const previousCodes = (existing && existing.expiresAt > now) ? (existing.validOtps || [existing.otp]) : [];
-  const validOtps = [...new Set([...previousCodes, otp])];
+  const validOtps = [...new Set([...previousCodes, otp])].slice(-3); // Keep last 3 codes
 
   // Store in memory with multi-code history
   otpStore.set(staffId, {
@@ -549,29 +562,52 @@ app.post('/api/auth/send-otp', async (req, res) => {
   // Single-flight real Arkesel SMS dispatch
   let arkeselDispatched = false;
   let arkeselError: string | null = null;
-  const arkeselApiKey = process.env.ARKESEL_API_KEY;
 
-  if (channel === 'sms' && arkeselApiKey) {
+  if (channel === 'sms' && ARKESEL_API_KEY) {
     try {
-      const senderId = process.env.ARKESEL_SENDER_ID || 'GES-Staff';
-
-      const smsRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
+      let activeSender = ARKESEL_SENDER_ID;
+      let smsRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'api-key': arkeselApiKey.trim(),
+          'api-key': ARKESEL_API_KEY.trim(),
         },
         body: JSON.stringify({
-          sender: senderId,
+          sender: activeSender,
           message: messageBody,
           recipients: [cleanDigits],
+          sandbox: false,
         }),
       });
 
-      const smsData = await smsRes.json().catch(() => ({}));
-      if (smsRes.ok && (smsData.status === 'success' || (Array.isArray(smsData.data) && smsData.data.length > 0))) {
+      let smsData = await smsRes.json().catch(() => ({}));
+
+      // If custom sender ID is rejected by Arkesel, instantly retry with approved 'GES-SMART'
+      if (!smsRes.ok || smsData.status !== 'success') {
+        const errorMsg = String(smsData.message || '');
+        if (errorMsg.includes('Sender ID') && activeSender !== 'GES-SMART') {
+          console.warn(`[Arkesel Sender ID Warning]: '${activeSender}' failed (${errorMsg}). Retrying immediately with approved 'GES-SMART'...`);
+          activeSender = 'GES-SMART';
+          smsRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'api-key': ARKESEL_API_KEY.trim(),
+            },
+            body: JSON.stringify({
+              sender: activeSender,
+              message: messageBody,
+              recipients: [cleanDigits],
+              sandbox: false,
+            }),
+          });
+          smsData = await smsRes.json().catch(() => ({}));
+        }
+      }
+
+      if (smsRes.ok && (smsData.status === 'success' || (Array.isArray(smsData.data) && smsData.data.length > 0) || smsData.code === 'ok')) {
         arkeselDispatched = true;
-        console.log(`[Arkesel SMS Dispatch] Successfully sent to ${cleanDigits} with Sender ID: ${senderId}`);
+        console.log(`[Arkesel SMS Dispatch] Successfully sent to ${cleanDigits} with Sender ID: ${activeSender}`);
       } else {
         arkeselError = smsData.message || (typeof smsData === 'string' ? smsData : 'Arkesel delivery error');
         console.warn('[Arkesel Gateway Error]:', arkeselError);
@@ -612,7 +648,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
 // API: Verify 2FA SMS OTP + Issue Signed JWT Token
 app.post('/api/auth/verify-otp', async (req, res) => {
-  const { staffId = 'GES-T-0428', otp, phone = '+233248793773', schoolCode = 'MAWULI01', staffName = 'Kwame Amponsah' } = req.body || {};
+  const { staffId = '1000042', otp, phone = '+233248793773', schoolCode = 'MAWULI01', staffName = 'Kwame Amponsah' } = req.body || {};
 
   // 1. Lockout Check
   const unlockTime = otpLockoutStore.get(staffId);
@@ -1073,30 +1109,6 @@ Output ONLY valid JSON.`;
   }
 });
 
-// API: 5. Multilingual Parent WhatsApp & SMS Dispatcher
-app.post('/api/ai/multilingual-alert', async (req, res) => {
-  const { studentName, status, language } = req.body;
-  try {
-    const ai = getAI();
-    if (!ai) {
-      return res.json({ translatedMessage: `Dear Parent, ${studentName} was marked ${status} today at school.`, isFallback: true });
-    }
-    const prompt = `Translate and format an SMS alert for parent of student "${studentName}" who was marked "${status}" at school today.
-Target Language: ${language || 'Twi'}.
-Return JSON: { "translatedMessage": "..." }
-Output ONLY valid JSON.`;
-
-    const result = await generateContentWithRetry(ai, {
-      contents: prompt,
-      preferredModel: 'gemini-3.8-flash',
-      config: { responseMimeType: 'application/json' },
-    });
-    const parsed = JSON.parse(result.text || '{}');
-    res.json({ ...parsed, isFallback: false, model: result.modelUsed });
-  } catch (err) {
-    res.json({ translatedMessage: `Dear Parent, ${studentName} attendance update: ${status}.`, isFallback: true });
-  }
-});
 
 // Automated Daily 06:00 GMT Arkesel Balance Guard
 function initDailyBalanceGuard() {

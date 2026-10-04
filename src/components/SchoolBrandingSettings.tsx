@@ -93,7 +93,7 @@ export function SchoolBrandingSettings({
     updateCustomTheme({
       primary: manualPrimary,
       secondary: manualSecondary,
-      logo: previewUrl || undefined,
+      logo: theme.logo || undefined,
     });
     showToast(`Custom theme colors saved! Primary ${manualPrimary}`);
   };
@@ -152,7 +152,7 @@ export function SchoolBrandingSettings({
           }`}
         >
           <UploadCloud className="w-3.5 h-3.5" />
-          <span>Upload Crest / Logo</span>
+          <span>Upload Crest</span>
         </button>
 
         <button
@@ -180,6 +180,7 @@ export function SchoolBrandingSettings({
         </button>
       </div>
 
+
       {/* TAB 1: UPLOAD CREST / LOGO */}
       {activeTab === 'upload' && (
         <div className="space-y-5">
@@ -188,116 +189,63 @@ export function SchoolBrandingSettings({
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-300 hover:border-slate-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-50/50 hover:bg-slate-50 transition duration-150 flex flex-col items-center justify-center space-y-2"
+            className="border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-2xl p-8 text-center cursor-pointer transition group"
           >
             <input
-              ref={fileInputRef}
               type="file"
-              accept="image/png, image/jpeg, image/svg+xml"
+              ref={fileInputRef}
+              onChange={(e) => e.target.files && handleFileChange(e.target.files[0])}
+              accept="image/*"
               className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileChange(e.target.files[0]);
-                }
-              }}
             />
-
-            <div className="w-12 h-12 rounded-full bg-white shadow-xs border border-slate-200 flex items-center justify-center text-slate-600">
-              <UploadCloud className="w-6 h-6" />
-            </div>
-
-            <p className="text-sm font-bold text-slate-800">
-              Click to select or drag and drop School Crest (PNG, JPG)
-            </p>
-            <p className="text-[11px] text-slate-400">
-              High resolution square or circular crests recommended (max 5MB)
-            </p>
-          </div>
-
-          {/* Preview & Extracted Colors Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
-            {/* Left: 80px Preview Circle */}
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-full bg-white border-2 border-slate-300 shadow-sm overflow-hidden flex items-center justify-center shrink-0">
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="Crest Preview"
-                    className="w-full h-full object-contain p-1"
-                  />
-                ) : (
-                  <span className="text-2xl text-slate-300">🏛️</span>
-                )}
+            
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center group-hover:scale-110 transition duration-300 shadow-xs">
+                <UploadCloud className="w-8 h-8 text-slate-400 group-hover:text-indigo-600" />
               </div>
-
               <div>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Crest Preview
-                </span>
-                <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
-                  {theme.name}
-                </h4>
-                <p className="text-[11px] text-slate-500">{theme.slogan}</p>
-                {isProcessing && (
-                  <span className="text-[11px] text-amber-600 font-bold animate-pulse mt-1 inline-block">
-                    Analyzing pixel histogram...
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Right: Extracted Color Bubbles */}
-            <div className="flex flex-col justify-center space-y-2">
-              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                Extracted Brand Colors
-              </span>
-              <div className="flex items-center gap-3">
-                {/* Primary Bubble */}
-                <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs">
-                  <div
-                    className="w-6 h-6 rounded-full border border-slate-300 shadow-inner shrink-0"
-                    style={{ backgroundColor: extractedPrimary }}
-                  />
-                  <div>
-                    <span className="text-[9px] text-slate-400 font-bold block uppercase">Primary</span>
-                    <span className="text-xs font-mono font-bold text-slate-800">{extractedPrimary}</span>
-                  </div>
-                </div>
-
-                {/* Secondary Bubble */}
-                <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs">
-                  <div
-                    className="w-6 h-6 rounded-full border border-slate-300 shadow-inner shrink-0"
-                    style={{ backgroundColor: extractedSecondary }}
-                  />
-                  <div>
-                    <span className="text-[9px] text-slate-400 font-bold block uppercase">Secondary</span>
-                    <span className="text-xs font-mono font-bold text-slate-800">{extractedSecondary}</span>
-                  </div>
-                </div>
+                <p className="text-sm font-bold text-slate-900">Click or Drag School Crest</p>
+                <p className="text-xs text-slate-500 mt-1">High-quality PNG or JPG (Min 200x200px)</p>
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <button
-              onClick={handleApplyLogoColors}
-              style={{ backgroundColor: extractedPrimary }}
-              className="px-5 py-2.5 rounded-xl text-white font-black text-xs shadow-md hover:opacity-90 active:scale-98 transition flex items-center gap-2 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-yellow-300" />
-              <span>Apply Colors from Logo</span>
-            </button>
+          {/* Preview & Extraction Area */}
+          {previewUrl && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 animate-fadeIn">
+              <div className="flex items-start gap-5">
+                {/* Logo Preview */}
+                <div className="w-24 h-24 rounded-xl bg-white border border-slate-200 p-2 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                  <img src={previewUrl} alt="Crest Preview" className="max-w-full max-h-full object-contain" />
+                </div>
 
-            <button
-              onClick={handleResetToDefault}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-xs font-bold transition flex items-center gap-1.5"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset to Official GES Standard</span>
-            </button>
-          </div>
+                <div className="flex-1 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Extracted Brand Palette:</span>
+                    {isProcessing && <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-spin" />}
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: extractedPrimary }} />
+                      <span className="text-[10px] font-mono font-bold text-slate-700">{extractedPrimary}</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: extractedSecondary }} />
+                      <span className="text-[10px] font-mono font-bold text-slate-700">{extractedSecondary}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleApplyLogoColors}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black shadow-md shadow-indigo-600/20 transition active:scale-95"
+                  >
+                    Apply Auto-Branding
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

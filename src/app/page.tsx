@@ -11,6 +11,11 @@ import {
   ShieldCheck,
   CheckCircle2,
   Users,
+  GraduationCap,
+  Utensils,
+  HeartPulse,
+  Network,
+  Sparkles,
 } from 'lucide-react';
 
 export default function RootHomePage() {
@@ -165,34 +170,61 @@ export default function RootHomePage() {
             </div>
           </Link>
 
-          {/* Card 5: School Admin Console */}
+          {/* Card 5: Leadership Cockpit */}
           <Link
-            to="/admin"
+            to="/leadership"
             className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/60 hover:shadow-2xl hover:shadow-emerald-950/60 transition group flex flex-col justify-between"
           >
             <div className="space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-950 border border-emerald-500/40 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
-                <Building2 className="w-6 h-6" />
+                <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block">
-                  Protected School Console
+                  Management Dashboard
                 </span>
                 <h3 className="text-lg font-bold text-white group-hover:text-emerald-200 transition">
+                  Leadership Cockpit
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Dedicated oversight for Principal and Assistant Heads. Real-time boarding, academic, and welfare monitoring.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition">
+              <span>Open Cockpit (/leadership)</span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
+          </Link>
+
+          {/* Card 6: School Admin Console */}
+          <Link
+            to="/admin"
+            className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-yellow-500/60 hover:shadow-2xl hover:shadow-yellow-950/60 transition group flex flex-col justify-between"
+          >
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-yellow-950 border border-yellow-500/40 text-yellow-400 flex items-center justify-center group-hover:scale-105 transition">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-yellow-400 block">
+                  Operational Control
+                </span>
+                <h3 className="text-lg font-bold text-white group-hover:text-yellow-200 transition">
                   School Admin Console
                 </h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Scoped strictly to {config.schoolCode}. Unclock Staff Hub with mandatory audit reason, geofence radius &amp; GES CSV exports.
+                Scoped strictly to {config.schoolCode}. Manage organogram, staff roster, geofence, and system settings.
               </p>
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition">
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-yellow-400 group-hover:translate-x-1 transition">
               <span>Admin Console (/admin)</span>
               <ArrowRight className="w-4 h-4" />
             </div>
           </Link>
 
-          {/* Card 6: Super Admin Directorate */}
+          {/* Card 7: Super Admin Directorate */}
           <Link
             to="/super_admin"
             className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-indigo-500/60 hover:shadow-2xl hover:shadow-indigo-950/60 transition group flex flex-col justify-between"
@@ -210,7 +242,7 @@ export default function RootHomePage() {
                 </h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Multi-school oversight across Mawuli, Achimota, Prempeh, Tamale. Brute-force security alerts &amp; punctuality benchmarks.
+                Multi-school oversight across Mawuli, Achimota, Prempeh, Tamale. Brute-force security alerts & nationwide benchmarks.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-indigo-400 group-hover:translate-x-1 transition">

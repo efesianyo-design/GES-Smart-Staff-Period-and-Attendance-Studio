@@ -23,6 +23,10 @@ import {
   FileText,
   Trash2,
   X,
+  Lock,
+  Unlock,
+  Layers,
+  ShieldCheck,
 } from 'lucide-react';
 import { SchoolConfig, StaffMember } from '../types';
 import { storageEngine } from '../utils/storage';
@@ -45,13 +49,23 @@ import {
 // =========================================================================
 export const SchoolsCampusTab: React.FC<{ config: SchoolConfig }> = ({ config }) => {
   const [geofenceRadius, setGeofenceRadius] = useState(config.radiusMeters || 500);
+  const [schoolCodeInput, setSchoolCodeInput] = useState(config.schoolCode || '');
+  const [prinPass, setPrinPass] = useState(config.principalPassword || '1234');
+  const [acadPass, setAcadPass] = useState(config.asstAcademicPassword || '1234');
+  const [domPass, setDomPass] = useState(config.asstDomesticPassword || '1234');
+  const [welfPass, setWelfPass] = useState(config.asstWelfarePassword || '1234');
   const [savedToast, setSavedToast] = useState(false);
 
   const handleSaveCampus = () => {
     soundSynthesizer.playScanBeep();
     storageEngine.saveSchoolConfig({
       ...config,
+      schoolCode: schoolCodeInput,
       radiusMeters: geofenceRadius,
+      principalPassword: prinPass,
+      asstAcademicPassword: acadPass,
+      asstDomesticPassword: domPass,
+      asstWelfarePassword: welfPass,
     });
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 3000);
@@ -106,12 +120,13 @@ export const SchoolsCampusTab: React.FC<{ config: SchoolConfig }> = ({ config })
               </div>
 
               <div>
-                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">GES School Code</label>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">Unique GES School Code</label>
                 <input
                   type="text"
-                  disabled
-                  value={config.schoolCode}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-emerald-700"
+                  value={schoolCodeInput}
+                  onChange={(e) => setSchoolCodeInput(e.target.value)}
+                  placeholder="e.g. GES-VR-HO-002"
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-emerald-700"
                 />
               </div>
 
@@ -129,7 +144,41 @@ export const SchoolsCampusTab: React.FC<{ config: SchoolConfig }> = ({ config })
                 <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">Morning Punctuality Cut-off</label>
                 <input
                   type="text"
-                  defaultValue="07:45 AM GMT"
+                  defaultValue={config.onTimeCutoff || '07:45'}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">Lesson Start Hour (24h)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  defaultValue={config.lessonStartHour ?? 6}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val)) {
+                      storageEngine.saveSchoolConfig({ ...config, lessonStartHour: val });
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">Lesson End Hour (24h)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="23"
+                  defaultValue={config.lessonEndHour ?? 17}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val)) {
+                      storageEngine.saveSchoolConfig({ ...config, lessonEndHour: val });
+                    }
+                  }}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
                 />
               </div>
@@ -155,6 +204,59 @@ export const SchoolsCampusTab: React.FC<{ config: SchoolConfig }> = ({ config })
               <p className="text-[11px] text-slate-500">
                 Staff mobile BYOD clock-in requires the device GPS to be strictly within this perimeter of the campus center.
               </p>
+            </div>
+          </div>
+
+          {/* Leadership Roles Default Passwords Assignment */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-emerald-600" />
+              <span>Leadership Roles Default Passwords &amp; Access</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Configure default entry PINs/passwords for Principal and Assistant Headmasters accessing the Leadership Cockpit.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">Principal / Headmaster Password</label>
+                <input
+                  type="text"
+                  value={prinPass}
+                  onChange={(e) => setPrinPass(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">AH (Academic) Password</label>
+                <input
+                  type="text"
+                  value={acadPass}
+                  onChange={(e) => setAcadPass(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">AH (Domestic) Password</label>
+                <input
+                  type="text"
+                  value={domPass}
+                  onChange={(e) => setDomPass(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-500 font-bold uppercase text-[10px] block mb-1">AH (Welfare) Password</label>
+                <input
+                  type="text"
+                  value={welfPass}
+                  onChange={(e) => setWelfPass(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-mono font-bold text-slate-800"
+                />
+              </div>
             </div>
           </div>
 
@@ -351,12 +453,12 @@ export const StaffUploadsTab: React.FC<{ config: SchoolConfig }> = ({ config }) 
             onClick={() => setActiveSubTab('uploads')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
               activeSubTab === 'uploads'
-                ? 'bg-yellow-400 text-slate-950 font-black shadow-xs'
+                ? 'bg-slate-900 text-white shadow-xs'
                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Automated Uploads Hub</span>
+            <span>Uploads Hub</span>
           </button>
           <button
             onClick={() => setActiveSubTab('cross_dept')}
@@ -979,8 +1081,233 @@ export const AttendanceAuditTab: React.FC<{ config: SchoolConfig }> = ({ config 
 // 4. PRESENCE TRACKING / GEOFENCE RADAR TAB
 // =========================================================================
 export const PresenceTrackingTab: React.FC<{ config: SchoolConfig }> = ({ config }) => {
+  const [activeSessions, setActiveSessions] = React.useState(() => storageEngine.getActiveClassSessions());
+  const [classrooms, setClassrooms] = React.useState(() => storageEngine.getClassrooms());
+  const [periodSessions, setPeriodSessions] = React.useState(() => storageEngine.getPeriodSessions());
+  const [notification, setNotification] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const handleUpdate = () => {
+      setActiveSessions(storageEngine.getActiveClassSessions());
+      setClassrooms(storageEngine.getClassrooms());
+      setPeriodSessions(storageEngine.getPeriodSessions());
+    };
+    window.addEventListener('ges_active_sessions_changed', handleUpdate);
+    window.addEventListener('ges_session_saved', handleUpdate);
+    return () => {
+      window.removeEventListener('ges_active_sessions_changed', handleUpdate);
+      window.removeEventListener('ges_session_saved', handleUpdate);
+    };
+  }, []);
+
+  const occupiedMap = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const s of activeSessions) {
+      if (s.classCode) map.set(s.classCode, s);
+      if (s.className) map.set(s.className, s);
+      if (s.mergedClassCodes) {
+        for (const mc of s.mergedClassCodes) {
+          map.set(mc, s);
+        }
+      }
+      if (s.mergedClassNames) {
+        for (const mn of s.mergedClassNames) {
+          map.set(mn, s);
+        }
+      }
+    }
+    return map;
+  }, [activeSessions]);
+
+  const lateActiveSessions = activeSessions.filter((s) => s.isLateArrival);
+
+  const handleForceUnlock = (staffIdOrCode: string, name: string) => {
+    soundSynthesizer.playScanBeep();
+    storageEngine.endClassSession(staffIdOrCode);
+    setActiveSessions(storageEngine.getActiveClassSessions());
+    setNotification(`Headmaster Override: Force-unlocked and released classroom for ${name}.`);
+    setTimeout(() => setNotification(null), 4000);
+  };
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      {/* Toast Notification */}
+      {notification && (
+        <div className="p-3 bg-emerald-900 text-white rounded-xl text-xs font-bold flex items-center justify-between shadow-lg">
+          <span>{notification}</span>
+          <button onClick={() => setNotification(null)} className="p-1 hover:text-emerald-300">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* HEADMASTER MONITOR: LIVE CLASSROOMS & LATE LESSONS TRACKER */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-black text-slate-900 tracking-tight">
+                Live Classroom Sessions &amp; Teacher Punctuality Monitor
+              </h2>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase">
+                Real-time Sync
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Headmaster &amp; Assistant Headmaster live audit: Tracks lesson start times against master timetable, flags late arrivals, and enforces session locks.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
+              {activeSessions.length} Active {activeSessions.length === 1 ? 'Session' : 'Sessions'}
+            </span>
+            {lateActiveSessions.length > 0 && (
+              <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-800 font-black border border-rose-300 animate-pulse">
+                ⚠️ {lateActiveSessions.length} Late Lesson Starts
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* LATE LESSON STARTS HIGH-VISIBILITY ALERT BOX */}
+        {lateActiveSessions.length > 0 && (
+          <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-950 font-black text-xs uppercase tracking-wider">
+                <AlertTriangle className="w-4 h-4 text-amber-700" />
+                <span>Urgent Headmaster Prompt: Teachers Arrived Late for Current Lessons</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                Action Required
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {lateActiveSessions.map((s) => (
+                <div key={s.id} className="p-3 bg-white border border-amber-300 rounded-xl flex items-start justify-between shadow-2xs">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-black text-xs text-slate-900">{s.teacherName}</span>
+                      <span className="font-mono text-[9px] bg-slate-100 px-1.5 py-0.2 rounded font-bold text-slate-600">
+                        {s.teacherStaffId}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700 font-medium">
+                      Period {s.periodNumber} • {s.subject} ({s.className})
+                    </p>
+                    <p className="text-[10px] text-amber-800 font-mono">
+                      Scheduled: <strong>{s.scheduledStartTime} AM</strong> → Actual Entry: <strong>{s.actualStartTime} AM</strong>
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="px-2.5 py-1 rounded-md bg-rose-100 border border-rose-300 text-rose-900 font-black text-[10px] uppercase inline-block shadow-2xs">
+                      ⚠️ {s.lateMinutes} MINS LATE
+                    </span>
+                    <button
+                      onClick={() => handleForceUnlock(s.teacherStaffId, s.teacherName)}
+                      className="block text-[10px] text-rose-600 hover:text-rose-800 font-bold mt-2 underline"
+                      title="Force release class if session was abandoned"
+                    >
+                      Release Lock
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CLASSROOMS LIVE STATUS GRID */}
+        <div>
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              All Campus Classrooms &amp; Session Concurrency Locks ({classrooms.length} Total Rooms):
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {classrooms.slice(0, 12).map((cls) => {
+              const occ = occupiedMap.get(cls.code) || occupiedMap.get(cls.name);
+              const isOccupied = Boolean(occ);
+              const isLate = occ?.isLateArrival;
+
+              return (
+                <div
+                  key={cls.code}
+                  className={`p-3.5 rounded-xl border transition ${
+                    isOccupied
+                      ? isLate
+                        ? 'bg-amber-50/80 border-2 border-amber-400 shadow-xs'
+                        : 'bg-emerald-50/80 border-2 border-emerald-400 shadow-xs'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-extrabold text-xs text-slate-900">{cls.name}</h4>
+                      <p className="text-[10px] text-slate-500 font-mono">
+                        {cls.code} • {cls.block || 'Campus Wing'}
+                      </p>
+                    </div>
+
+                    {isOccupied ? (
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-black uppercase inline-flex items-center gap-1 ${
+                          isLate
+                            ? 'bg-amber-200 text-amber-950 border border-amber-400'
+                            : 'bg-emerald-200 text-emerald-950 border border-emerald-400'
+                        }`}
+                      >
+                        <Lock className="w-2.5 h-2.5" />
+                        <span>IN SESSION</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[9px] font-bold border border-slate-200">
+                        FREE
+                      </span>
+                    )}
+                  </div>
+
+                  {isOccupied ? (
+                    <div className="mt-2.5 pt-2 border-t border-slate-200/80 text-[11px] space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">{occ.teacherName}</span>
+                        <span className="font-mono text-[10px] text-slate-500">P{occ.periodNumber}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600">
+                        {occ.subject} {occ.isMerged ? `• Joint Merged (${occ.totalRosterCount} learners)` : ''}
+                      </p>
+                      
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] font-mono text-slate-500">
+                          In: {occ.actualStartTime} AM
+                        </span>
+                        {isLate ? (
+                          <span className="px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 font-black text-[9px]">
+                            ⚠️ +{occ.lateMinutes}m Late
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-black text-[9px]">
+                            ✓ On Time
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-400 font-medium mt-3">
+                      Unoccupied • Available for lesson entry or merging
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* GEOFENCE RADAR CONTAINER */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
           <div>
@@ -1110,6 +1437,101 @@ export const MessagesBroadcastTab: React.FC<{ config: SchoolConfig }> = ({ confi
           <Send className="w-3.5 h-3.5" />
           <span>Broadcast SMS to Staff Phones</span>
         </button>
+      </div>
+    </div>
+  );
+};
+
+// =========================================================================
+// 5. SYSTEM AUDIT TRAIL TAB
+// =========================================================================
+export const SystemAuditTab: React.FC<{ config: SchoolConfig }> = ({ config }) => {
+  const [logs, setLogs] = useState(() => storageEngine.getAuditLogs());
+  const [filter, setFilter] = useState('');
+
+  const filteredLogs = logs.filter(l => 
+    l.action.toLowerCase().includes(filter.toLowerCase()) ||
+    (l.staffName || '').toLowerCase().includes(filter.toLowerCase()) ||
+    l.details.toLowerCase().includes(filter.toLowerCase())
+  ).sort((a, b) => b.timestamp - a.timestamp);
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+        <div>
+          <h2 className="text-lg font-black text-slate-900 tracking-tight">
+            System Activity Audit Trail
+          </h2>
+          <p className="text-xs text-slate-500 font-medium">
+            Permanent, tamper-evident log of all administrative and operational activities
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+            <input
+              type="text"
+              placeholder="Search logs..."
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-yellow-400 focus:outline-none w-48"
+            />
+          </div>
+          <button
+            onClick={() => {
+              const csv = 'Timestamp,Staff ID,Staff Name,Action,Details\n' + 
+                filteredLogs.map(l => `${new Date(l.timestamp).toLocaleString()},${l.staffId},"${l.staffName}","${l.action}","${l.details}"`).join('\n');
+              downloadCSV(csv, `System_Audit_${new Date().toISOString().split('T')[0]}.csv`);
+            }}
+            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-slate-800 transition shadow-sm"
+          >
+            Export Audit CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-[11px] border-collapse">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase text-[9px]">
+              <th className="py-2 px-3">Date & Time</th>
+              <th className="py-2 px-3">Actor</th>
+              <th className="py-2 px-3">Action</th>
+              <th className="py-2 px-3">Specific Details</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {filteredLogs.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-10 text-center text-slate-400 font-medium">
+                  No system activity logs found.
+                </td>
+              </tr>
+            ) : (
+              filteredLogs.map((log) => (
+                <tr key={log.id} className="hover:bg-slate-50/50 transition">
+                  <td className="py-2.5 px-3 whitespace-nowrap font-mono text-slate-500">
+                    {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-900">{log.staffName || 'System'}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">ID: {log.staffId || 'SYS'}</span>
+                    </div>
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-black text-[9px] uppercase tracking-tighter">
+                      {log.action}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-slate-600 italic">
+                    {log.details}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

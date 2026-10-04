@@ -17,6 +17,7 @@ import StaffAttendancePage from './app/(staff)/attendance/page';
 import NonTeachingAttendancePage from './app/(staff)/attendance/non-teaching/page';
 import PeriodTrackerPage from './app/(staff)/period-tracker/page';
 import SchoolAdminPage from './app/(school)/admin/page';
+import LeadershipCockpitPage from './app/(leadership)/leadership/page';
 import AdminSettingsPage from './app/(school)/admin/settings/page';
 import MasterRosterPage from './app/(school)/master-roster/page';
 import SuperAdminPage from './app/(super)/super-admin/page';
@@ -57,6 +58,14 @@ function SecurityThreatNotifier() {
   useEffect(() => {
     const handleAlert = (e: any) => {
       const incident: SecurityIncident = e.detail;
+      
+      // If we are on the teacher period tracker, don't show management alerts for lateness
+      if (window.location.pathname.includes('/period-tracker') || window.location.pathname.includes('/period_tracker')) {
+        if (incident.type === 'teacher_late_arrival' || incident.type === 'critical_tardiness') {
+          return;
+        }
+      }
+
       if (incident) {
         setActiveAlert(incident);
         const timer = setTimeout(() => {
@@ -131,6 +140,7 @@ export default function App() {
             }
           >
             <Route path="/admin" element={<SchoolAdminPage />} />
+            <Route path="/leadership" element={<LeadershipCockpitPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route path="/master_roster" element={<MasterRosterPage />} />
             <Route path="/master-roster" element={<MasterRosterPage />} />

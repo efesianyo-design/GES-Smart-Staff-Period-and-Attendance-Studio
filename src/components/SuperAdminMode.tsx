@@ -20,6 +20,7 @@ import {
   FileText,
   AlertOctagon,
   Key,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   OFFICIAL_GES_SCHOOLS,
@@ -30,6 +31,8 @@ import {
 import { SchoolConfig } from '../types';
 import { soundSynthesizer } from '../utils/audio';
 import { DataPrivacyModal } from './DataPrivacyModal';
+
+import { AuditTrailHub } from './AuditTrailHub';
 
 interface SuperAdminModeProps {
   currentSchoolConfig: SchoolConfig;
@@ -48,7 +51,7 @@ export const SuperAdminMode: React.FC<SuperAdminModeProps> = ({
   const [selectedSchoolCode, setSelectedSchoolCode] = useState<string>(
     currentSchoolConfig.schoolCode || 'GES-VR-HO-002'
   );
-  const [activeTab, setActiveTab] = useState<'overview' | 'schools' | 'incidents' | 'privacy'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'schools' | 'incidents' | 'privacy' | 'audit_trail'>('overview');
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState<boolean>(false);
   const [incidentFilter, setIncidentFilter] = useState<'all' | 'critical' | 'active'>('all');
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -246,6 +249,21 @@ export const SuperAdminMode: React.FC<SuperAdminModeProps> = ({
         >
           <Lock className="w-3.5 h-3.5" />
           <span>Act 843 Privacy Compliance</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('audit_trail');
+            soundSynthesizer.playKeypadBeep();
+          }}
+          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+            activeTab === 'audit_trail'
+              ? 'bg-slate-800 text-white shadow-md'
+              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Institutional Audit Trail</span>
         </button>
       </div>
 
@@ -568,6 +586,11 @@ export const SuperAdminMode: React.FC<SuperAdminModeProps> = ({
         onClose={() => setIsPrivacyModalOpen(false)}
         schoolName={currentSchoolConfig.schoolName}
       />
+
+      {/* TAB 4: INSTITUTIONAL AUDIT TRAIL */}
+      {activeTab === 'audit_trail' && (
+        <AuditTrailHub schoolCode={currentSchoolConfig.schoolCode} />
+      )}
     </div>
   );
 };

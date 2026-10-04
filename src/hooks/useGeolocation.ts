@@ -4,6 +4,7 @@ import {
   calculateHaversineDistance,
   resolveSchoolTargetCoordinates,
   calibrateCampusGateGps,
+  findNearestSchool,
   CALIBRATED_COORDS_EVENT,
 } from '../utils/geo';
 import { soundSynthesizer } from '../utils/audio';
@@ -35,15 +36,34 @@ export function useGeolocation(config: SchoolConfig, activeSchoolCode?: string) 
     (lat: number, lng: number, accuracy: number, isMock: boolean, mockMode: 'at_gate' | 'outside') => {
       mockRef.current = { isMockEnabled: isMock, mockMode };
       const currentConfig = configRef.current;
-      const targetCoords = resolveSchoolTargetCoordinates(
+      let targetCoords = resolveSchoolTargetCoordinates(
         schoolCodeRef.current || currentConfig.schoolCode,
         currentConfig
       );
 
-      const distance = calculateHaversineDistance(
+      let distance = calculateHaversineDistance(
         { lat, lng },
         { lat: targetCoords.lat, lng: targetCoords.lng }
       );
+
+      // Smart Multi-Campus Auto-Detection:
+      // If default school is far (e.g., app defaulted to Mawuli in Ho, but tester is at Prempeh in Kumasi),
+      // detect if tester is at any registered GES campus
+      if (distance > targetCoords.radiusMeters) {
+        const nearest = findNearestSchool(lat, lng);
+        if (nearest && nearest.distanceKm < 1.5) {
+          const nearestTarget = resolveSchoolTargetCoordinates(nearest.code, currentConfig);
+          const nearestDist = calculateHaversineDistance(
+            { lat, lng },
+            { lat: nearestTarget.lat, lng: nearestTarget.lng }
+          );
+          if (nearestDist <= nearestTarget.radiusMeters) {
+            targetCoords = nearestTarget;
+            distance = nearestDist;
+          }
+        }
+      }
+
       const isWithin = distance <= targetCoords.radiusMeters;
 
       setState((prev) => ({

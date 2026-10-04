@@ -672,12 +672,12 @@ Administer a 5-minute retrieval check on "${topic}" at the start of the next mee
           </div>
 
           <button
-            onClick={onOpenQrScanner}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 transition active:scale-95"
-            title="Scan door QR code if available"
+            onClick={() => setIsTimetableModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-[11px] font-semibold text-emerald-300 transition whitespace-nowrap cursor-pointer shadow-xs"
+            title="View institutional aSc Timetable matrix"
           >
-            <Building2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Door QR</span>
+            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Class Timetable</span>
           </button>
         </div>
       </div>
@@ -853,13 +853,22 @@ Administer a 5-minute retrieval check on "${topic}" at the start of the next mee
             {classrooms.map((cls) => {
               const isChecked = selectedMergeClassIds.includes(cls.id);
               const isInSession = !!cls.currentSession;
+              const isOccupiedByAnother = isInSession && cls.currentSession?.teacherId !== teacher?.id;
               return (
                 <button
                   key={cls.id}
                   type="button"
+                  disabled={isOccupiedByAnother}
                   onClick={() => toggleMergeClass(cls.id)}
+                  title={
+                    isOccupiedByAnother
+                      ? `Locked: In session with ${cls.currentSession?.teacherName}`
+                      : 'Click to select or merge'
+                  }
                   className={`p-2 rounded-xl border text-left transition flex flex-col justify-between ${
-                    isChecked
+                    isOccupiedByAnother
+                      ? 'bg-rose-950/40 border-rose-900 text-rose-400 opacity-60 cursor-not-allowed'
+                      : isChecked
                       ? 'bg-indigo-950/80 border-indigo-500 text-white shadow-sm shadow-indigo-500/20'
                       : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                   }`}
@@ -870,12 +879,14 @@ Administer a 5-minute retrieval check on "${topic}" at the start of the next mee
                     </span>
                     <span
                       className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${
-                        isChecked
+                        isOccupiedByAnother
+                          ? 'text-rose-400 font-bold'
+                          : isChecked
                           ? 'bg-indigo-500 text-white font-black'
                           : 'border border-slate-700'
                       }`}
                     >
-                      {isChecked && '✓'}
+                      {isOccupiedByAnother ? '🔒' : isChecked && '✓'}
                     </span>
                   </div>
                   <span className="text-[11px] font-semibold truncate block leading-tight">

@@ -30,10 +30,13 @@ import {
   X,
   Check,
   Upload,
+  UploadCloud,
   Image as ImageIcon,
   Palette,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../utils/authContext';
+import { SystemAuditTab } from './SchoolAdminTabs';
 import {
   OFFICIAL_GES_SCHOOLS,
   SchoolDirectoryItem,
@@ -236,6 +239,7 @@ export const SuperAdminDirectorateDashboard: React.FC = () => {
   const [incidents, setIncidents] = useState<SecurityIncident[]>(() => securityEngine.getIncidents());
   const [isExporting, setIsExporting] = useState(false);
   const [reportGeneratedToast, setReportGeneratedToast] = useState<string | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
   useEffect(() => {
     const handleSchoolsUpdated = () => {
@@ -571,6 +575,16 @@ export const SuperAdminDirectorateDashboard: React.FC = () => {
                   >
                     <Users className="w-3.5 h-3.5 text-cyan-400" />
                     <span>Master Staff Roster</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      setIsAuditModalOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                    <span>National Audit Trail</span>
                   </button>
                   <button
                     onClick={() => {
@@ -1379,57 +1393,50 @@ export const SuperAdminDirectorateDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Logo & School Branding */}
                 <div className="p-3.5 bg-slate-900/90 border border-slate-700/80 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
-                      <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>School Crest / Logo Upload</span>
-                    </label>
-                    <span className="text-[10px] text-emerald-400 font-medium">Auto-applies to Kiosk &amp; Console</span>
+                    <label className="text-[11px] font-bold text-slate-200 uppercase tracking-widest">School Crest / Logo</label>
                   </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-xl bg-slate-950 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                    <div className="relative group w-full aspect-square sm:aspect-auto sm:h-24 bg-slate-950 border border-slate-700 rounded-xl overflow-hidden flex items-center justify-center">
                       {newSchoolLogo ? (
-                        <img src={newSchoolLogo} alt="Logo Preview" className="w-full h-full object-contain p-1" />
+                        <img src={newSchoolLogo} className="w-full h-full object-contain p-2" alt="Crest Preview" />
                       ) : (
-                        <ImageIcon className="w-6 h-6 text-slate-600" />
+                        <UploadCloud className="w-8 h-8 text-slate-700" />
                       )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                              setNewSchoolLogo(evt.target?.result as string);
+                              soundSynthesizer.playScanBeep();
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
                     </div>
-                    <div className="flex-1 space-y-1">
-                      <label className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white cursor-pointer transition text-xs font-semibold">
-                        <Upload className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>{newSchoolLogo ? 'Change Crest / Logo' : 'Upload School Crest'}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (evt) => {
-                                setNewSchoolLogo(evt.target?.result as string);
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-slate-400 leading-tight">
+                        Click or drag to upload official SHS crest. 
+                      </p>
                       {newSchoolLogo && (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => setNewSchoolLogo(null)}
-                            className="text-[10px] text-red-400 hover:underline"
-                          >
-                            Remove uploaded logo
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewSchoolLogo(null)}
+                          className="text-[10px] font-bold text-rose-400 hover:text-rose-300"
+                        >
+                          Remove Image
+                        </button>
                       )}
                     </div>
                   </div>
+                </div>
 
                   {/* Slogan */}
                   <div className="space-y-1">
@@ -1486,7 +1493,6 @@ export const SuperAdminDirectorateDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1">
@@ -1796,12 +1802,11 @@ export const SuperAdminDirectorateDashboard: React.FC = () => {
                         switchSuperAdminSchool(targetCode);
                         soundSynthesizer.playScanBeep();
                         setInspectingSchool(null);
-                        setReportGeneratedToast(`Focused context set to ${inspectingSchool.name} (${targetCode}).`);
-                        setTimeout(() => setReportGeneratedToast(null), 3000);
+                        navigate('/admin?tab=organogram');
                       }}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition"
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-yellow-300 text-xs font-bold transition flex items-center gap-1"
                     >
-                      Focus Context
+                      <span>Organogram Chart</span>
                     </button>
                     <button
                       onClick={() => {
@@ -1818,6 +1823,36 @@ export const SuperAdminDirectorateDashboard: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Audit Modal Overlay */}
+        {isAuditModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 sm:p-10">
+            <div className="bg-[#0F172A] rounded-[32px] w-full max-w-6xl max-h-full overflow-hidden border border-slate-700 shadow-2xl flex flex-col animate-scale-in">
+              <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
+                    <ShieldCheck className="w-6 h-6 text-slate-950" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white tracking-tight">National Activity Audit Trail</h2>
+                    <p className="text-xs text-slate-400">GES Headquarters Master Log • Institutional Security Compliance</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsAuditModalOpen(false)}
+                  className="w-10 h-10 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center hover:bg-slate-700 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 bg-[#0F172A]">
+                <SystemAuditTab config={config} />
+              </div>
+              <div className="p-4 border-t border-slate-800 bg-slate-900/30 text-center">
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Permanent Data Integrity Protocol • GES Cyber Security Wing</p>
               </div>
             </div>
           </div>

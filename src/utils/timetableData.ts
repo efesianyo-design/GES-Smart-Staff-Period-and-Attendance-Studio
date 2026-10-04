@@ -1,4 +1,5 @@
 import { ClassTimetable, TimetableSlot, WeekDay } from '../types';
+import { storageEngine } from './storage';
 
 export type { WeekDay };
 
@@ -54,8 +55,11 @@ export const TEACHER_NAME_MAP: Record<string, { fullName: string; staffId: strin
   AGBEWU: { fullName: 'Miss Leticia Agbewu', staffId: '1220681' },
   MOHAMMED: { fullName: 'Mr. Musan Mohammed', staffId: '819744' },
   KETEKE: { fullName: 'Mr. Kennedy Keteke', staffId: '666510' },
-  LIB: { fullName: 'Library / Independent Study', staffId: 'LIB-001' },
-  PLC: { fullName: 'Professional / Virtual Learning Session', staffId: 'PLC-001' },
+  KA: { fullName: 'Mr. Kwame Amponsah', staffId: '706711' },
+  KAMPONSAH: { fullName: 'Mr. Kwame Amponsah', staffId: '706711' },
+  AMPONSAH: { fullName: 'Mr. Kwame Amponsah', staffId: '706711' },
+  LIB: { fullName: 'Library / Independent Study', staffId: '999001' },
+  PLC: { fullName: 'Professional / Virtual Learning Session', staffId: '999002' },
 };
 
 export function isSubjectCore(arg1: string, arg2?: string, isScienceExplicit?: boolean): boolean {
@@ -720,3 +724,221 @@ export function lookupClassScheduleSlot(
   const slot = slots.find((s) => s.period === periodNumber);
   return slot || null;
 }
+
+/**
+ * Smartly resolves teacher from timetable initials, abbreviations, surnames, or full names.
+ * Example inputs: "EFE", "E.F.E.", "KA", "K. Amponsah", "GOKA", "SABBAH", "1304201", "0248793773"
+ */
+export function resolveTeacherSmart(
+  input: string,
+  staffList?: { staffId: string; name: string; department?: string; phone?: string }[]
+): { fullName: string; staffId: string; matchedBy: string; initials: string; department?: string } {
+  if (!input || !input.trim()) {
+    return {
+      fullName: 'Mr. Eugene Fafali Esianyo',
+      staffId: '1304201',
+      matchedBy: 'default',
+      initials: 'EFE',
+      department: 'General Arts',
+    };
+  }
+
+  const raw = input.trim();
+  const rawUpper = raw.toUpperCase();
+  const clean = raw.replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+  const lettersOnly = raw.replace(/[^A-Za-z]/g, '').toUpperCase();
+  const digitsOnly = raw.replace(/\D/g, '');
+
+  // 1. Direct match in official TEACHER_NAME_MAP
+  if (TEACHER_NAME_MAP[rawUpper]) {
+    const item = TEACHER_NAME_MAP[rawUpper];
+    return { fullName: item.fullName, staffId: item.staffId, matchedBy: 'timetable_name_map', initials: rawUpper };
+  }
+  if (TEACHER_NAME_MAP[clean]) {
+    const item = TEACHER_NAME_MAP[clean];
+    return { fullName: item.fullName, staffId: item.staffId, matchedBy: 'timetable_name_map', initials: clean };
+  }
+
+  // Common Shorthand / Initials Direct Map
+  const KNOWN_INITIALS: Record<string, { fullName: string; staffId: string; department?: string }> = {
+    KA: { fullName: 'Mr. Kwame Amponsah', staffId: 'GES-T-0428', department: 'Business Management' },
+    KAMPONSAH: { fullName: 'Mr. Kwame Amponsah', staffId: 'GES-T-0428', department: 'Business Management' },
+    AMPONSAH: { fullName: 'Mr. Kwame Amponsah', staffId: 'GES-T-0428', department: 'Business Management' },
+    EFE: { fullName: 'Mr. Eugene Fafali Esianyo', staffId: '1304201', department: 'General Arts' },
+    EE: { fullName: 'Mr. Eugene Fafali Esianyo', staffId: '1304201', department: 'General Arts' },
+    ESIANYO: { fullName: 'Mr. Eugene Fafali Esianyo', staffId: '1304201', department: 'General Arts' },
+    CAS: { fullName: 'Miss Charity Akosua Sabbah', staffId: '948389', department: 'Home Economics & Services' },
+    CS: { fullName: 'Miss Charity Akosua Sabbah', staffId: '948389', department: 'Home Economics & Services' },
+    SABBAH: { fullName: 'Miss Charity Akosua Sabbah', staffId: '948389', department: 'Home Economics & Services' },
+    DG: { fullName: 'Mr. David Goka', staffId: '748589', department: 'General Science' },
+    GOKA: { fullName: 'Mr. David Goka', staffId: '748589', department: 'General Science' },
+    SN: { fullName: 'Mr. Samuel Numatsi', staffId: '707086', department: 'Mathematics' },
+    NUMATSI: { fullName: 'Mr. Samuel Numatsi', staffId: '707086', department: 'Mathematics' },
+    SSS: { fullName: 'Mr. Sylvanus Sunday Semaxa', staffId: '706711', department: 'General Science' },
+    SEMAXA: { fullName: 'Mr. Sylvanus Sunday Semaxa', staffId: '706711', department: 'General Science' },
+    RDK: { fullName: 'Mr. Richard Dodzi Keteku', staffId: '648991', department: 'Languages' },
+    KETEKU: { fullName: 'Mr. Richard Dodzi Keteku', staffId: '648991', department: 'Languages' },
+    RA: { fullName: 'Mr. Richard Asiedu', staffId: '1254416', department: 'Business' },
+    ASIEDU: { fullName: 'Mr. Richard Asiedu', staffId: '1254416', department: 'Business' },
+    IM: { fullName: 'Mr. Issor Mbiba', staffId: '1547764', department: 'Social Sciences' },
+    MBIBA: { fullName: 'Mr. Issor Mbiba', staffId: '1547764', department: 'Social Sciences' },
+    PDA: { fullName: 'Miss Patience Dzigbordi Amaglo', staffId: '623941', department: 'General Arts' },
+    AMAGLO: { fullName: 'Miss Patience Dzigbordi Amaglo', staffId: '623941', department: 'General Arts' },
+    EAW: { fullName: 'Miss Emelda Abena Wawo', staffId: '1358346', department: 'Home Economics' },
+    WAWO: { fullName: 'Miss Emelda Abena Wawo', staffId: '1358346', department: 'Home Economics' },
+    AO: { fullName: 'Mr. Augustine Ottuh', staffId: '953124', department: 'Visual Arts' },
+    OTTUH: { fullName: 'Mr. Augustine Ottuh', staffId: '953124', department: 'Visual Arts' },
+    EA: { fullName: 'Mr. Emmanuel Agbewowoele', staffId: '814652', department: 'Science' },
+    MAK: { fullName: 'Mary Agyei Kyeremeh', staffId: '1525610', department: 'Home Economics' },
+    KYEREMEH: { fullName: 'Mary Agyei Kyeremeh', staffId: '1525610', department: 'Home Economics' },
+    HT: { fullName: 'Miss Harriet Tsamanyi', staffId: '939231', department: 'General Arts' },
+    TSAMANYI: { fullName: 'Miss Harriet Tsamanyi', staffId: '939231', department: 'General Arts' },
+    JAN: { fullName: 'Miss Jenny Akwaley Nuertey', staffId: '1417900', department: 'Science' },
+    NUERTEY: { fullName: 'Miss Jenny Akwaley Nuertey', staffId: '1417900', department: 'Science' },
+    LA: { fullName: 'Miss Leticia Agbewu', staffId: '1220681', department: 'Arts' },
+    AGBEWU: { fullName: 'Miss Leticia Agbewu', staffId: '1220681', department: 'Arts' },
+    SKA: { fullName: 'Mr. Segbaya Koku Ahialoho', staffId: '281351', department: 'Technical' },
+    AHIALOHO: { fullName: 'Mr. Segbaya Koku Ahialoho', staffId: '281351', department: 'Technical' },
+    KT: { fullName: 'Mr. Koffi Toku', staffId: '1199492', department: 'Mathematics' },
+    TOKU: { fullName: 'Mr. Koffi Toku', staffId: '1199492', department: 'Mathematics' },
+    MM: { fullName: 'Mr. Musan Mohammed', staffId: '819744', department: 'Islamic Studies' },
+    MOHAMMED: { fullName: 'Mr. Musan Mohammed', staffId: '819744', department: 'Islamic Studies' },
+    KEB: { fullName: 'Mr. Komla Erasmus Boateng', staffId: '623736', department: 'General Arts' },
+    BOATENG: { fullName: 'Mr. Komla Erasmus Boateng', staffId: '623736', department: 'General Arts' },
+    DD: { fullName: 'Mr. Desmond Dzorkplenu', staffId: '1242093', department: 'Science' },
+    DZORKPLENU: { fullName: 'Mr. Desmond Dzorkplenu', staffId: '1242093', department: 'Science' },
+    VA: { fullName: 'Miss Veronica Adorkor', staffId: '748954', department: 'Business' },
+    ADORKOR: { fullName: 'Miss Veronica Adorkor', staffId: '748954', department: 'Business' },
+    PY: { fullName: 'Mr. Prince Yayra', staffId: '704182', department: 'Visual Arts' },
+    YAYRA: { fullName: 'Mr. Prince Yayra', staffId: '704182', department: 'Visual Arts' },
+    RMA: { fullName: 'Mr. Richard Mawuli Adare', staffId: '867298', department: 'Mathematics' },
+    ADARE: { fullName: 'Mr. Richard Mawuli Adare', staffId: '867298', department: 'Mathematics' },
+    EKA: { fullName: 'Mr. Enoch Kwasi Adiasie', staffId: '1222669', department: 'Science' },
+    ADIASIE: { fullName: 'Mr. Enoch Kwasi Adiasie', staffId: '1222669', department: 'Science' },
+    KK: { fullName: 'Mr. Kennedy Keteke', staffId: '666510', department: 'Social Studies' },
+    KETEKE: { fullName: 'Mr. Kennedy Keteke', staffId: '666510', department: 'Social Studies' },
+  };
+
+  if (lettersOnly && KNOWN_INITIALS[lettersOnly]) {
+    const match = KNOWN_INITIALS[lettersOnly];
+    return { fullName: match.fullName, staffId: match.staffId, matchedBy: 'initials', initials: lettersOnly, department: match.department };
+  }
+
+  // 2. Query school staff database dynamically
+  let roster: { staffId: string; name: string; department?: string; phone?: string }[] = [];
+  if (staffList && staffList.length > 0) {
+    roster = staffList;
+  } else {
+    try {
+      const teaching = storageEngine.getStaff().map((s) => ({
+        staffId: s.staffId,
+        name: s.name,
+        department: s.department,
+        phone: s.phone,
+      }));
+      const nonTeaching = storageEngine.getNonTeachingStaff().map((nt) => ({
+        staffId: nt.staffId,
+        name: nt.name,
+        department: nt.unit,
+        phone: nt.phone,
+      }));
+      roster = [...teaching, ...nonTeaching];
+    } catch {
+      roster = [];
+    }
+  }
+
+  // Match by phone number (e.g. 0248793773 or 0246397354)
+  if (digitsOnly.length >= 7) {
+    const byPhone = roster.find((s) => s.phone && s.phone.replace(/\D/g, '').includes(digitsOnly));
+    if (byPhone) {
+      return {
+        fullName: byPhone.name,
+        staffId: byPhone.staffId,
+        matchedBy: 'phone_number',
+        initials: extractInitials(byPhone.name),
+        department: byPhone.department,
+      };
+    }
+    // Check known test phone numbers
+    if (digitsOnly.includes('248793773') || digitsOnly.includes('0248793773')) {
+      return {
+        fullName: 'Mr. Eugene Fafali Esianyo',
+        staffId: '1304201',
+        matchedBy: 'phone_number',
+        initials: 'EFE',
+        department: 'General Arts',
+      };
+    }
+    if (digitsOnly.includes('246397354') || digitsOnly.includes('0246397354')) {
+      return {
+        fullName: 'Miss Charity Akosua Sabbah',
+        staffId: '948389',
+        matchedBy: 'phone_number',
+        initials: 'CAS',
+        department: 'Home Economics & Services',
+      };
+    }
+  }
+
+  // Match by exact staff ID
+  const byId = roster.find((s) => s.staffId.toLowerCase() === raw.toLowerCase());
+  if (byId) {
+    return { fullName: byId.name, staffId: byId.staffId, matchedBy: 'staff_id', initials: extractInitials(byId.name), department: byId.department };
+  }
+
+  // Match by exact name
+  const byName = roster.find((s) => s.name.toLowerCase() === raw.toLowerCase());
+  if (byName) {
+    return { fullName: byName.name, staffId: byName.staffId, matchedBy: 'full_name', initials: extractInitials(byName.name), department: byName.department };
+  }
+
+  // Smart Match against each staff member in database
+  for (const staff of roster) {
+    const staffClean = staff.name.replace(/^(Mr\.|Mrs\.|Miss|Dr\.|Rev\.|Madam)\s+/i, '').trim();
+    const parts = staffClean.split(/\s+/).filter(Boolean);
+    const initialsAll = parts.map((p) => p[0].toUpperCase()).join(''); // e.g. EFE
+    const initialsFirstLast = parts.length > 1 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : ''; // e.g. EE
+    const surname = parts.length > 0 ? parts[parts.length - 1].toUpperCase() : ''; // e.g. ESIANYO
+    const firstName = parts.length > 0 ? parts[0].toUpperCase() : '';
+
+    // Check initials match
+    if (lettersOnly === initialsAll || (initialsFirstLast && lettersOnly === initialsFirstLast)) {
+      return { fullName: staff.name, staffId: staff.staffId, matchedBy: 'initials', initials: initialsAll, department: staff.department };
+    }
+
+    // Check surname match
+    if (surname && (clean === surname || clean.includes(surname))) {
+      return { fullName: staff.name, staffId: staff.staffId, matchedBy: 'surname', initials: initialsAll, department: staff.department };
+    }
+
+    // Check first name match
+    if (firstName && clean === firstName && firstName.length >= 4) {
+      return { fullName: staff.name, staffId: staff.staffId, matchedBy: 'first_name', initials: initialsAll, department: staff.department };
+    }
+
+    // Check initial + surname pattern (e.g. "K. Amponsah", "E. Esianyo")
+    if (parts.length > 1) {
+      const short1 = `${parts[0][0]} ${surname}`.toUpperCase();
+      const short2 = `${parts[0][0]}${surname}`.toUpperCase();
+      if (clean === short1 || clean.replace(/\s+/g, '') === short2) {
+        return { fullName: staff.name, staffId: staff.staffId, matchedBy: 'initial_and_surname', initials: initialsAll, department: staff.department };
+      }
+    }
+  }
+
+  // Fallback
+  return {
+    fullName: raw,
+    staffId: '1000999',
+    matchedBy: 'unmatched',
+    initials: lettersOnly.slice(0, 3) || 'GES',
+  };
+}
+
+function extractInitials(name: string): string {
+  const clean = name.replace(/^(Mr\.|Mrs\.|Miss|Dr\.|Rev\.|Madam)\s+/i, '').trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  return parts.map((p) => p[0].toUpperCase()).join('');
+}
+

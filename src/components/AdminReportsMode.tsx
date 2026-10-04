@@ -980,13 +980,33 @@ export const AdminReportsMode: React.FC<AdminReportsModeProps> = ({
                           <div className="text-[11px] text-slate-400">
                             {session.teacherName} <span className="font-mono text-slate-500">({session.teacherStaffId})</span>
                           </div>
+                          {session.isLateArrival && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="px-1.5 py-0.5 rounded bg-red-950 border border-red-500 text-red-300 font-black text-[9px] flex items-center gap-1 shadow-xs">
+                                <AlertTriangle className="w-2.5 h-2.5 text-red-400 shrink-0" />
+                                <span>LATE (+{session.lateMinutes || 0} MINS)</span>
+                              </span>
+                              <span className="text-[10px] text-amber-300 font-mono">
+                                Sched: {session.scheduledStartTime || '07:00'} → Entered: {session.actualStartTime || session.startTime}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-mono px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 font-bold text-[10px]">
                             {session.className}
                           </span>
                           {session.isMerged && (
-                            <span className="ml-1 text-[9px] text-indigo-400 font-semibold uppercase">Merged</span>
+                            <div className="mt-1">
+                              <span className="px-1.5 py-0.2 rounded bg-indigo-950 border border-indigo-500/40 text-indigo-300 text-[9px] font-bold uppercase inline-block">
+                                Joint Merged ({session.totalRosterCount} Learners)
+                              </span>
+                              {session.mergedClassNames && session.mergedClassNames.length > 0 && (
+                                <p className="text-[9px] text-indigo-400 font-mono mt-0.5">
+                                  {session.mergedClassNames.join(' + ')}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="py-2.5 px-3 whitespace-nowrap">

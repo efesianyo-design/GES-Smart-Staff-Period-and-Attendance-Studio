@@ -8,6 +8,13 @@ import {
   PunctualityStatus,
   NonTeachingStaffMember,
   NonTeachingAttendanceRecord,
+  ActiveClassSession,
+  OrganogramConfig,
+  LeadershipRoleConfig,
+  InfirmaryVisitRecord,
+  HouseDormRecord,
+  WelfareCaseRecord,
+  AuditLog,
 } from '../types';
 
 const STORAGE_KEYS = {
@@ -15,6 +22,7 @@ const STORAGE_KEYS = {
   CLASSROOMS: 'ges_classrooms_v1',
   GATE_ATTENDANCE: 'ges_gate_attendance_v1',
   PERIOD_SESSIONS: 'ges_period_sessions_v1',
+  ACTIVE_CLASS_SESSIONS: 'ges_active_class_sessions_v1',
   NON_TEACHING_STAFF: 'ges_non_teaching_staff_v1',
   NON_TEACHING_ATTENDANCE: 'ges_non_teaching_attendance_v1',
   CONFIG: 'ges_school_config_v1',
@@ -22,6 +30,11 @@ const STORAGE_KEYS = {
   LAST_SYNC: 'ges_last_sync_timestamp',
   DEVICE_MODE: 'ges_device_operating_mode_v1',
   BOUND_STAFF_ID: 'ges_byod_bound_staff_id_v1',
+  ORGANOGRAM_PREFIX: 'ges_school_organogram_v1_',
+  INFIRMARY: 'ges_school_infirmary_v1',
+  HOUSE_DORMS: 'ges_school_house_dorms_v1',
+  WELFARE_CASES: 'ges_school_welfare_cases_v1',
+  AUDIT_LOGS: 'ges_institutional_audit_logs_v1',
 };
 
 // Default School Configuration (Ho / Volta Region - GES Standards)
@@ -36,8 +49,312 @@ export const DEFAULT_CONFIG: SchoolConfig = {
   onTimeCutoff: '07:45',
   lateCutoff: '08:30',
   closingTime: '14:30',
+  lessonStartHour: 6,
+  lessonEndHour: 17,
   superAdminPin: '1234',
+  principalPassword: '1234',
+  asstAcademicPassword: '1234',
+  asstDomesticPassword: '1234',
+  asstWelfarePassword: '1234',
 };
+
+// Default Ghana Education Service (GES) Institutional Organogram
+export const DEFAULT_ORGANOGRAM_ROLES: LeadershipRoleConfig[] = [
+  {
+    key: 'headmaster',
+    title: 'Principal / Headmaster / Headmistress',
+    officerName: 'Mr. Jonathan Gustav Adomah',
+    staffId: '1000001',
+    phone: '+233 24 456 7890',
+    avatarColor: 'from-amber-600 to-yellow-600',
+    scopeDescription: 'Chief Executive Officer: Monitors everything in the school across teaching, non-teaching, academic, domestic, welfare, and financial governance.',
+    supervisedCategories: ['teaching_staff', 'non_teaching_staff', 'period_tracking', 'academic_departments', 'kitchen', 'dormitories', 'security', 'infirmary', 'counseling', 'finance'],
+    monitoredUnits: ['All Academic Departments', 'Senior Leadership Team', 'Boarding & Domestic', 'Welfare & Health Bay', 'Security & Campus Gate', 'Accounts & Bursary'],
+    canAlterOrganogram: true,
+    reportsToKey: 'board_of_governors',
+    division: 'executive',
+    lastActive: 'Just now',
+  },
+  {
+    key: 'asst_academic',
+    title: 'Assistant Headmaster (Academic)',
+    officerName: 'Mr. Eugene Fafali Esianyo',
+    staffId: '1304201',
+    phone: '+233 24 879 3773',
+    avatarColor: 'from-blue-600 to-indigo-700',
+    scopeDescription: 'Academic Division Head: Monitors teachers, departmental subject distribution, period tracker lessons, academic timetable, classroom roll calls, and syllabus coverage.',
+    supervisedCategories: ['teaching_staff', 'period_tracking', 'academic_departments', 'timetables', 'laboratories'],
+    monitoredUnits: ['General Science', 'General Arts', 'Business Studies', 'Visual Arts', 'Home Economics', 'Agricultural Science', 'ICT Dept'],
+    canAlterOrganogram: false,
+    reportsToKey: 'headmaster',
+    division: 'academic',
+    lastActive: '5 mins ago',
+  },
+  {
+    key: 'asst_domestic',
+    title: 'Assistant Headmaster (Domestic)',
+    officerName: 'Mr. Sylvanus Sunday Semaxa',
+    staffId: '706711',
+    phone: '+233 24 345 6789',
+    avatarColor: 'from-emerald-600 to-teal-700',
+    scopeDescription: 'Domestic & Campus Operations Head: Monitors housemasters, dormitories, dining hall/catering services, campus security, estate groundsmen, artisans, and non-teaching shift staff.',
+    supervisedCategories: ['kitchen', 'dormitories', 'security', 'groundsmen', 'artisans', 'drivers'],
+    monitoredUnits: ['Boarding Houses & Dorms', 'Dining Hall & Kitchen', 'Campus Security & Gates', 'Estate, Sanitation & Grounds', 'Transport Fleet'],
+    canAlterOrganogram: false,
+    reportsToKey: 'headmaster',
+    division: 'domestic',
+    lastActive: '12 mins ago',
+  },
+  {
+    key: 'asst_welfare',
+    title: 'Assistant Headmaster (Welfare)',
+    officerName: 'Mrs. Charity Sabbath',
+    staffId: '706588',
+    phone: '+233 24 639 7354',
+    avatarColor: 'from-rose-600 to-pink-700',
+    scopeDescription: 'Student & Staff Welfare Head: Monitors student welfare, school infirmary/health bay, medical exeats, guidance & counseling unit, prefectorial board, and staff compassionate cases.',
+    supervisedCategories: ['infirmary', 'counseling', 'student_welfare', 'staff_welfare', 'exeats'],
+    monitoredUnits: ['School Health Bay / Infirmary', 'Guidance & Counseling Unit', 'Prefectorial Board & SRC', 'Staff Welfare Committee', 'Emergency Relief Desk'],
+    canAlterOrganogram: false,
+    reportsToKey: 'headmaster',
+    division: 'welfare',
+    lastActive: '8 mins ago',
+  },
+  {
+    key: 'asst_admin',
+    title: 'Assistant Headmaster (Administration)',
+    officerName: 'Mr. Frank Mawuli Kpodo',
+    staffId: '705599',
+    phone: '+233 24 567 8901',
+    avatarColor: 'from-purple-600 to-indigo-800',
+    scopeDescription: 'Administrative Governance Head: Monitors official records, institutional registry, GES compliance archives, and general secretarial logistics.',
+    supervisedCategories: ['administration', 'registry', 'secretariat'],
+    monitoredUnits: ['Administrative Registry', 'Records Office', 'General Maintenance', 'Public Relations'],
+    canAlterOrganogram: false,
+    reportsToKey: 'headmaster',
+    division: 'administrative',
+    lastActive: '20 mins ago',
+  },
+  {
+    key: 'accountant',
+    title: 'Bursar / School Accountant',
+    officerName: 'Mr. Eric Kwadwo Mensah',
+    staffId: '706601',
+    phone: '+233 24 678 9012',
+    avatarColor: 'from-amber-700 to-yellow-800',
+    scopeDescription: 'Financial Controller & Stores: Monitors accounts office, fee collection logs, storekeeper inventory, procurement, and canteen receipts.',
+    supervisedCategories: ['finance', 'stores', 'procurement'],
+    monitoredUnits: ['Accounts Office', 'Cashier Desk', 'Procurement & Storekeeper', 'Internal Audit'],
+    canAlterOrganogram: false,
+    reportsToKey: 'headmaster',
+    division: 'finance',
+    lastActive: '18 mins ago',
+  },
+  {
+    key: 'senior_housemaster',
+    title: 'Senior Housemaster',
+    officerName: 'Mr. Maxwell Kofi Goka',
+    staffId: '708112',
+    phone: '+233 24 789 0123',
+    avatarColor: 'from-teal-600 to-emerald-800',
+    scopeDescription: 'Supervises Housemasters, Boarding Houses, evening prep, dormitory roll calls, and boarder discipline.',
+    supervisedCategories: ['dormitories', 'housemasters', 'boarders'],
+    monitoredUnits: ['Aggrey House', 'Lincoln House', 'Wilberforce House', 'Glover House', 'Afua Kobi House'],
+    canAlterOrganogram: false,
+    reportsToKey: 'asst_domestic',
+    division: 'domestic',
+    lastActive: '14 mins ago',
+  },
+  {
+    key: 'matron',
+    title: 'Matron & Catering Supervisor',
+    officerName: 'Mrs. Faustina Nyarko',
+    staffId: '706703',
+    phone: '+233 24 890 1234',
+    avatarColor: 'from-orange-600 to-amber-700',
+    scopeDescription: 'Oversees school kitchen, pantry inventory, cooks shift attendance, and daily meal rations.',
+    supervisedCategories: ['kitchen', 'cooks', 'food_rations'],
+    monitoredUnits: ['Main Dining Hall', 'Pantry & Food Stores', 'Kitchen Preparation Yard'],
+    canAlterOrganogram: false,
+    reportsToKey: 'asst_domestic',
+    division: 'domestic',
+    lastActive: '2 mins ago',
+  },
+  {
+    key: 'chief_security',
+    title: 'Chief Security Officer',
+    officerName: 'Mr. Prosper Kwasi Mensah',
+    staffId: '706804',
+    phone: '+233 24 901 2345',
+    avatarColor: 'from-slate-700 to-slate-900',
+    scopeDescription: 'Oversees campus gate security, day/night guard shifts, campus perimeter patrols, and visitor logs.',
+    supervisedCategories: ['security', 'gate_marshals', 'night_watchmen'],
+    monitoredUnits: ['Main Entrance Gate', 'Back Gate', 'Perimeter Wall Patrol'],
+    canAlterOrganogram: false,
+    reportsToKey: 'asst_domestic',
+    division: 'domestic',
+    lastActive: '1 min ago',
+  },
+  {
+    key: 'head_nurse',
+    title: 'Senior Nursing Officer',
+    officerName: 'Sister Mary Akosua Osei',
+    staffId: '706910',
+    phone: '+233 24 012 3456',
+    avatarColor: 'from-red-600 to-rose-700',
+    scopeDescription: 'Manages the school infirmary, student triage, first aid, medical records, and hospital referrals.',
+    supervisedCategories: ['infirmary', 'nursing_staff', 'medical_records'],
+    monitoredUnits: ['Main Clinic / Health Bay', 'Dispensary', 'Isolation Ward'],
+    canAlterOrganogram: false,
+    reportsToKey: 'asst_welfare',
+    division: 'welfare',
+    lastActive: '4 mins ago',
+  },
+  {
+    key: 'head_counselor',
+    title: 'Lead Guidance & Counseling Officer',
+    officerName: 'Rev. Dr. Emmanuel Agbeti',
+    staffId: '707111',
+    phone: '+233 24 123 4567',
+    avatarColor: 'from-violet-600 to-purple-800',
+    scopeDescription: 'Coordinates student psychosocial counseling, emotional wellness, career guidance, and peer counseling.',
+    supervisedCategories: ['counseling', 'student_support'],
+    monitoredUnits: ['Guidance & Counseling Suite', 'Peer Support Club'],
+    canAlterOrganogram: false,
+    reportsToKey: 'asst_welfare',
+    division: 'welfare',
+    lastActive: '25 mins ago',
+  },
+];
+
+export const INITIAL_INFIRMARY_RECORDS: InfirmaryVisitRecord[] = [
+  {
+    id: 'inf-1',
+    studentName: 'Kofi Selorm Amegatse',
+    classCode: 'GEN_ART_2A',
+    houseName: 'Aggrey House',
+    complaint: 'Severe headache & fever (temperature 38.6°C)',
+    admittedAt: '08:45 AM',
+    status: 'admitted',
+    nurseOnDuty: 'Sister Mary Akosua Osei',
+    treatment: 'Paracetamol 500mg, oral rehydration salts & bed rest in Bay 2',
+    exeatIssued: false,
+  },
+  {
+    id: 'inf-2',
+    studentName: 'Enyonam Boateng',
+    classCode: 'GEN_SCI_3A',
+    houseName: 'Lincoln House',
+    complaint: 'Ankle sprain during PE football drill',
+    admittedAt: '10:15 AM',
+    status: 'discharged',
+    nurseOnDuty: 'Sister Mary Akosua Osei',
+    treatment: 'Ice pack compression & crepe bandage dressing applied',
+    exeatIssued: false,
+  },
+  {
+    id: 'inf-3',
+    studentName: 'Emmanuel Kwabena Tsikata',
+    classCode: 'BUSINESS_2',
+    houseName: 'Wilberforce House',
+    complaint: 'Suspected acute appendicitis / severe abdominal pain',
+    admittedAt: '11:30 AM',
+    status: 'referred_hospital',
+    nurseOnDuty: 'Sister Mary Akosua Osei',
+    treatment: 'Immediate stabilization and transfer to Ho Teaching Hospital via school ambulance',
+    exeatIssued: true,
+  },
+];
+
+export const INITIAL_HOUSE_DORMS: HouseDormRecord[] = [
+  {
+    id: 'dorm-1',
+    houseName: 'Aggrey House',
+    housemasterName: 'Mr. Maxwell Kofi Goka',
+    housemasterStaffId: '708112',
+    totalBoarders: 240,
+    presentTonight: 236,
+    onExeatCount: 3,
+    inInfirmaryCount: 1,
+    musterRollStatus: 'completed',
+    lastRollCallTime: '21:00',
+  },
+  {
+    id: 'dorm-2',
+    houseName: 'Lincoln House',
+    housemasterName: 'Mr. Samuel Numatsi',
+    housemasterStaffId: '707086',
+    totalBoarders: 220,
+    presentTonight: 218,
+    onExeatCount: 2,
+    inInfirmaryCount: 0,
+    musterRollStatus: 'completed',
+    lastRollCallTime: '21:15',
+  },
+  {
+    id: 'dorm-3',
+    houseName: 'Wilberforce House',
+    housemasterName: 'Mr. Desmond Dzorkplenu',
+    housemasterStaffId: '706500',
+    totalBoarders: 210,
+    presentTonight: 207,
+    onExeatCount: 2,
+    inInfirmaryCount: 1,
+    musterRollStatus: 'completed',
+    lastRollCallTime: '20:55',
+  },
+  {
+    id: 'dorm-4',
+    houseName: 'Glover House',
+    housemasterName: 'Mr. Sylvanus Sunday Semaxa',
+    housemasterStaffId: '706711',
+    totalBoarders: 195,
+    presentTonight: 193,
+    onExeatCount: 2,
+    inInfirmaryCount: 0,
+    musterRollStatus: 'pending',
+    lastRollCallTime: 'Pending Evening Roll',
+  },
+];
+
+export const INITIAL_WELFARE_CASES: WelfareCaseRecord[] = [
+  {
+    id: 'wlf-1',
+    caseType: 'student_guidance',
+    personName: 'Blessing Aku Ahiabor',
+    personType: 'student',
+    departmentOrClass: 'Form 2 Arts',
+    description: 'Exam anxiety & academic counseling following mid-semester mock tests.',
+    openedDate: '2026-10-02',
+    status: 'in_progress',
+    officerInCharge: 'Rev. Dr. Emmanuel Agbeti',
+    urgency: 'medium',
+  },
+  {
+    id: 'wlf-2',
+    caseType: 'staff_compassionate',
+    personName: 'Mr. Richard Mawuli Adare',
+    personType: 'teaching_staff',
+    departmentOrClass: 'Science Department',
+    description: 'Bereavement leave notice (3 days) & staff solidarity contribution dispatch.',
+    openedDate: '2026-10-03',
+    status: 'active',
+    officerInCharge: 'Mrs. Charity Sabbath',
+    urgency: 'high',
+  },
+  {
+    id: 'wlf-3',
+    caseType: 'medical_emergency',
+    personName: 'Emmanuel Kwabena Tsikata',
+    personType: 'student',
+    departmentOrClass: 'Business 2',
+    description: 'Emergency referral to Ho Teaching Hospital; parents notified via official SMS.',
+    openedDate: '2026-10-04',
+    status: 'in_progress',
+    officerInCharge: 'Sister Mary Akosua Osei',
+    urgency: 'critical',
+  },
+];
 
 // Initial Seed Staff Roster (Populated directly from the official School Master Teacher List & aSc Timetables)
 export const INITIAL_STAFF: StaffMember[] = [
@@ -381,7 +698,7 @@ export const INITIAL_STAFF: StaffMember[] = [
   },
   {
     id: 'staff-nss-1',
-    staffId: 'NSS-2024-041',
+    staffId: '2024101',
     name: 'Ms. Beatrice Agbemava',
     department: 'Vocational & Arts',
     phone: '+233 24 331 4455',
@@ -394,7 +711,7 @@ export const INITIAL_STAFF: StaffMember[] = [
   },
   {
     id: 'staff-intern-1',
-    staffId: 'INT-2024-012',
+    staffId: '2024112',
     name: 'Mr. Johnathan Quarshie',
     department: 'Physical Education & Health',
     phone: '+233 26 778 9900',
@@ -866,35 +1183,35 @@ function getInitialTeachingSessions(): PeriodTeachingSession[] {
 export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
   {
     id: 'nt-1',
-    staffId: 'GES-NT-001',
-    name: 'Mr. Sylvanus K. Adzaho',
+    staffId: '1304201',
+    name: 'Mr. Eugene Fafali Esianyo',
     role: 'Administrator',
-    unit: 'General Administration & Records',
-    phone: '+233 24 112 3456',
+    unit: 'General Administration & Operations',
+    phone: '+233 24 879 3773',
     phoneType: 'smartphone',
     shift: 'Administration (07:30 - 16:30)',
     pin: '1234',
     avatarColor: 'from-blue-600 to-indigo-700',
     category: 'permanent',
-    barcode: 'GES-NT-001',
+    barcode: '1304201',
   },
   {
     id: 'nt-2',
-    staffId: 'GES-NT-002',
-    name: 'Mrs. Charity Dzifa Agbana',
+    staffId: '706588',
+    name: 'Mrs. Charity Sabbath',
     role: 'Bursar',
     unit: 'Bursary & Accounts Unit',
-    phone: '+233 24 223 4567',
+    phone: '+233 24 639 7354',
     phoneType: 'smartphone',
     shift: 'Administration (07:30 - 16:30)',
     pin: '2234',
     avatarColor: 'from-emerald-600 to-teal-700',
     category: 'permanent',
-    barcode: 'GES-NT-002',
+    barcode: '706588',
   },
   {
     id: 'nt-3',
-    staffId: 'GES-NT-003',
+    staffId: '706703',
     name: 'Mr. Isaac Tetteh Coffie',
     role: 'Storekeeper',
     unit: 'Stores, Inventory & Supplies',
@@ -904,11 +1221,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '3345',
     avatarColor: 'from-amber-600 to-orange-700',
     category: 'permanent',
-    barcode: 'GES-NT-003',
+    barcode: '706703',
   },
   {
     id: 'nt-4',
-    staffId: 'GES-NT-004',
+    staffId: '706804',
     name: 'Mr. Kwaku Amegashie',
     role: 'Security',
     unit: 'Main Gate & Campus Security',
@@ -918,11 +1235,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '4456',
     avatarColor: 'from-red-600 to-rose-700',
     category: 'permanent',
-    barcode: 'GES-NT-004',
+    barcode: '706804',
   },
   {
     id: 'nt-5',
-    staffId: 'GES-NT-005',
+    staffId: '706905',
     name: 'Mr. Daniel Boateng',
     role: 'Security',
     unit: 'Night Watch & Dormitory Patrol',
@@ -932,11 +1249,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '5567',
     avatarColor: 'from-purple-600 to-slate-800',
     category: 'permanent',
-    barcode: 'GES-NT-005',
+    barcode: '706905',
   },
   {
     id: 'nt-6',
-    staffId: 'GES-NT-006',
+    staffId: '706606',
     name: 'Madam Elizabeth Mawusi Mensah',
     role: 'Matron',
     unit: 'Domestic Bursary & Dining Hall',
@@ -946,11 +1263,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '6678',
     avatarColor: 'from-pink-600 to-rose-700',
     category: 'permanent',
-    barcode: 'GES-NT-006',
+    barcode: '706606',
   },
   {
     id: 'nt-7',
-    staffId: 'GES-NT-007',
+    staffId: '706607',
     name: 'Madam Agnes Akoto',
     role: 'Cook',
     unit: 'Kitchen & Meal Preparation',
@@ -960,11 +1277,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '7789',
     avatarColor: 'from-orange-500 to-amber-600',
     category: 'permanent',
-    barcode: 'GES-NT-007',
+    barcode: '706607',
   },
   {
     id: 'nt-8',
-    staffId: 'GES-NT-008',
+    staffId: '706608',
     name: 'Madam Comfort Abla Darko',
     role: 'Cook',
     unit: 'Kitchen & Meal Preparation',
@@ -974,11 +1291,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '8890',
     avatarColor: 'from-amber-600 to-yellow-700',
     category: 'permanent',
-    barcode: 'GES-NT-008',
+    barcode: '706608',
   },
   {
     id: 'nt-9',
-    staffId: 'GES-NT-009',
+    staffId: '706609',
     name: 'Mr. Godwin Attipoe',
     role: 'Groundsman',
     unit: 'Sanitation, Compound & Grounds',
@@ -988,11 +1305,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '9901',
     avatarColor: 'from-emerald-600 to-green-700',
     category: 'permanent',
-    barcode: 'GES-NT-009',
+    barcode: '706609',
   },
   {
     id: 'nt-10',
-    staffId: 'YEA-VR-041',
+    staffId: '2024041',
     name: 'Prince Edem Tsikata',
     role: 'YEA',
     unit: 'Community Protection & Sanitation',
@@ -1002,11 +1319,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '1023',
     avatarColor: 'from-teal-600 to-cyan-700',
     category: 'yea',
-    barcode: 'YEA-VR-041',
+    barcode: '2024041',
   },
   {
     id: 'nt-11',
-    staffId: 'YEA-VR-052',
+    staffId: '2024052',
     name: 'Selorm Gbadago',
     role: 'YEA',
     unit: 'Youth Employment Agency (Temporal Security)',
@@ -1016,11 +1333,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '2134',
     avatarColor: 'from-cyan-600 to-blue-700',
     category: 'yea',
-    barcode: 'YEA-VR-052',
+    barcode: '2024052',
   },
   {
     id: 'nt-12',
-    staffId: 'VOL-2026-08',
+    staffId: '202608',
     name: 'Foster Komla Dogbey',
     role: 'Volunteer',
     unit: 'Sports & Student Welfare Auxiliary',
@@ -1030,11 +1347,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '3245',
     avatarColor: 'from-violet-600 to-purple-700',
     category: 'volunteer',
-    barcode: 'VOL-2026-08',
+    barcode: '202608',
   },
   {
     id: 'nt-13',
-    staffId: 'GES-NT-013',
+    staffId: '706613',
     name: 'Mr. John K. Nyavor',
     role: 'Driver',
     unit: 'Transport & Logistics',
@@ -1044,11 +1361,11 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '4356',
     avatarColor: 'from-slate-600 to-zinc-700',
     category: 'permanent',
-    barcode: 'GES-NT-013',
+    barcode: '706613',
   },
   {
     id: 'nt-14',
-    staffId: 'GES-NT-014',
+    staffId: '706614',
     name: 'Mr. Prosper K. Dzah',
     role: 'Lab Technician',
     unit: 'Science Laboratories (Physics / Chemistry)',
@@ -1058,7 +1375,7 @@ export const INITIAL_NON_TEACHING_STAFF: NonTeachingStaffMember[] = [
     pin: '5467',
     avatarColor: 'from-indigo-600 to-blue-700',
     category: 'permanent',
-    barcode: 'GES-NT-014',
+    barcode: '706614',
   },
 ];
 
@@ -1067,7 +1384,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
   return [
     {
       id: 'nt-att-1',
-      staffId: 'GES-NT-004',
+      staffId: '706804',
       staffName: 'Mr. Kwaku Amegashie',
       role: 'Security',
       unit: 'Main Gate & Campus Security',
@@ -1082,7 +1399,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-2',
-      staffId: 'GES-NT-007',
+      staffId: '706607',
       staffName: 'Madam Agnes Akoto',
       role: 'Cook',
       unit: 'Kitchen & Meal Preparation',
@@ -1097,7 +1414,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-3',
-      staffId: 'GES-NT-008',
+      staffId: '706608',
       staffName: 'Madam Comfort Abla Darko',
       role: 'Cook',
       unit: 'Kitchen & Meal Preparation',
@@ -1112,7 +1429,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-4',
-      staffId: 'GES-NT-006',
+      staffId: '706606',
       staffName: 'Madam Elizabeth Mawusi Mensah',
       role: 'Matron',
       unit: 'Domestic Bursary & Dining Hall',
@@ -1127,7 +1444,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-5',
-      staffId: 'GES-NT-001',
+      staffId: '1304201',
       staffName: 'Mr. Sylvanus K. Adzaho',
       role: 'Administrator',
       unit: 'General Administration & Records',
@@ -1142,7 +1459,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-6',
-      staffId: 'GES-NT-002',
+      staffId: '706588',
       staffName: 'Mrs. Charity Dzifa Agbana',
       role: 'Bursar',
       unit: 'Bursary & Accounts Unit',
@@ -1157,7 +1474,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-7',
-      staffId: 'GES-NT-003',
+      staffId: '706703',
       staffName: 'Mr. Isaac Tetteh Coffie',
       role: 'Storekeeper',
       unit: 'Stores, Inventory & Supplies',
@@ -1172,7 +1489,7 @@ export function getInitialNonTeachingAttendance(): NonTeachingAttendanceRecord[]
     },
     {
       id: 'nt-att-8',
-      staffId: 'YEA-VR-052',
+      staffId: '2024052',
       staffName: 'Selorm Gbadago',
       role: 'YEA',
       unit: 'Youth Employment Agency (Temporal Security)',
@@ -1192,11 +1509,42 @@ class StorageEngine {
   public getSchoolConfig(): SchoolConfig {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CONFIG);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        return { ...DEFAULT_CONFIG, ...parsed };
+      }
     } catch (e) {
       console.error(e);
     }
     return DEFAULT_CONFIG;
+  }
+
+  public getAuditLogs(): AuditLog[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
+      if (data) return JSON.parse(data);
+    } catch (e) {
+      console.error('Audit load error:', e);
+    }
+    return [];
+  }
+
+  public logAudit(log: Omit<AuditLog, 'id' | 'timestamp' | 'dateTime'>): AuditLog {
+    const logs = this.getAuditLogs();
+    const newLog: AuditLog = {
+      ...log,
+      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: Date.now(),
+      dateTime: new Date().toLocaleString([], {
+        dateStyle: 'short',
+        timeStyle: 'medium',
+      }),
+    };
+    logs.unshift(newLog);
+    // Keep last 500 logs
+    const trimmed = logs.slice(0, 500);
+    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(trimmed));
+    return newLog;
   }
 
   public saveSchoolConfig(config: SchoolConfig) {
@@ -1209,9 +1557,8 @@ class StorageEngine {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasOldMockIds = parsed.some((s: StaffMember) => s.staffId && s.staffId.startsWith('GES-ST-'));
           const hasSirEugene = parsed.some((s: StaffMember) => s.staffId === '1304201');
-          if (!hasOldMockIds && hasSirEugene && parsed.length >= 20) return parsed;
+          if (hasSirEugene && parsed.length >= 20) return parsed;
         }
       }
     } catch (e) {
@@ -1373,6 +1720,91 @@ class StorageEngine {
     this.queueForSync({ type: 'period_session', payload: session });
   }
 
+  public getActiveClassSessions(): ActiveClassSession[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_CLASS_SESSIONS);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  }
+
+  public saveActiveClassSessions(sessions: ActiveClassSession[]) {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_CLASS_SESSIONS, JSON.stringify(sessions));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ges_active_sessions_changed', { detail: sessions }));
+    }
+  }
+
+  /**
+   * Attempts to lock class(es) for an active session.
+   * If any requested class is already in session with ANOTHER teacher, returns conflict error.
+   */
+  public startClassSession(session: ActiveClassSession): {
+    success: boolean;
+    conflictReason?: string;
+    conflictingSession?: ActiveClassSession;
+  } {
+    const active = this.getActiveClassSessions();
+    const requestedCodes = [session.classCode, ...(session.mergedClassCodes || [])].filter(Boolean);
+
+    // Check if any requested class is occupied by another teacher
+    for (const s of active) {
+      if (s.teacherStaffId !== session.teacherStaffId) {
+        const occupiedCodes = [s.classCode, ...(s.mergedClassCodes || [])];
+        const conflict = requestedCodes.find((c) => occupiedCodes.includes(c));
+        if (conflict) {
+          const conflictingClassName = s.mergedClassCodes?.includes(conflict)
+            ? s.mergedClassNames?.[s.mergedClassCodes.indexOf(conflict)] || conflict
+            : s.className || conflict;
+          return {
+            success: false,
+            conflictReason: `Class "${conflictingClassName}" (${conflict}) is currently occupied in session by ${s.teacherName} for Period ${s.periodNumber} (${s.subject}). Concurrently adding, merging, or entering this class is locked until their session concludes.`,
+            conflictingSession: s,
+          };
+        }
+      }
+    }
+
+    // Replace if this teacher already had an active session, otherwise add
+    const filtered = active.filter((s) => s.teacherStaffId !== session.teacherStaffId);
+    filtered.push(session);
+    this.saveActiveClassSessions(filtered);
+    return { success: true };
+  }
+
+  public endClassSession(sessionIdOrStaffId: string) {
+    const active = this.getActiveClassSessions();
+    const filtered = active.filter(
+      (s) => s.id !== sessionIdOrStaffId && s.teacherStaffId !== sessionIdOrStaffId && s.classCode !== sessionIdOrStaffId
+    );
+    this.saveActiveClassSessions(filtered);
+  }
+
+  public getOccupiedClassesMap(): Map<string, ActiveClassSession> {
+    const active = this.getActiveClassSessions();
+    const map = new Map<string, ActiveClassSession>();
+    for (const s of active) {
+      if (s.classCode) map.set(s.classCode, s);
+      if (s.className) map.set(s.className, s);
+      if (s.mergedClassCodes) {
+        for (const mc of s.mergedClassCodes) {
+          map.set(mc, s);
+        }
+      }
+      if (s.mergedClassNames) {
+        for (const mn of s.mergedClassNames) {
+          map.set(mn, s);
+        }
+      }
+    }
+    return map;
+  }
+
   public queueForSync(item: { type: string; payload: unknown }) {
     try {
       const queue = this.getSyncQueue();
@@ -1441,8 +1873,10 @@ class StorageEngine {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.NON_TEACHING_STAFF);
       if (data) {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const parsed: NonTeachingStaffMember[] = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch (e) {
       console.error(e);
@@ -1538,6 +1972,137 @@ class StorageEngine {
       return list[idx];
     }
     return null;
+  }
+
+  // =========================================================================
+  // ORGANOGRAM & HIERARCHY GOVERNANCE
+  // =========================================================================
+  public getOrganogram(schoolCode?: string): OrganogramConfig {
+    const code = schoolCode || this.getSchoolConfig().schoolCode || 'GES-VR-HO-002';
+    const key = `${STORAGE_KEYS.ORGANOGRAM_PREFIX}${code}`;
+    try {
+      const data = localStorage.getItem(key);
+      if (data) {
+        const parsed: OrganogramConfig = JSON.parse(data);
+        if (parsed && Array.isArray(parsed.roles) && parsed.roles.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    const initial: OrganogramConfig = {
+      schoolCode: code,
+      schoolName: this.getSchoolConfig().schoolName || 'Mawuli Senior High School',
+      lastUpdated: new Date().toISOString(),
+      roles: DEFAULT_ORGANOGRAM_ROLES,
+    };
+    this.saveOrganogram(initial);
+    return initial;
+  }
+
+  public saveOrganogram(config: OrganogramConfig) {
+    const key = `${STORAGE_KEYS.ORGANOGRAM_PREFIX}${config.schoolCode}`;
+    const updated = {
+      ...config,
+      lastUpdated: new Date().toISOString(),
+    };
+    localStorage.setItem(key, JSON.stringify(updated));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ges_organogram_changed', { detail: updated }));
+    }
+    this.queueForSync({ type: 'organogram_updated', payload: updated });
+  }
+
+  public resetOrganogram(schoolCode?: string): OrganogramConfig {
+    const code = schoolCode || this.getSchoolConfig().schoolCode || 'GES-VR-HO-002';
+    const initial: OrganogramConfig = {
+      schoolCode: code,
+      schoolName: this.getSchoolConfig().schoolName || 'Mawuli Senior High School',
+      lastUpdated: new Date().toISOString(),
+      roles: DEFAULT_ORGANOGRAM_ROLES,
+    };
+    this.saveOrganogram(initial);
+    return initial;
+  }
+
+  // =========================================================================
+  // DOMESTIC & WELFARE SUPPORT SUBSYSTEMS
+  // =========================================================================
+  public getInfirmaryRecords(): InfirmaryVisitRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.INFIRMARY);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    this.saveInfirmaryRecords(INITIAL_INFIRMARY_RECORDS);
+    return INITIAL_INFIRMARY_RECORDS;
+  }
+
+  public saveInfirmaryRecords(records: InfirmaryVisitRecord[]) {
+    localStorage.setItem(STORAGE_KEYS.INFIRMARY, JSON.stringify(records));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ges_infirmary_changed', { detail: records }));
+    }
+  }
+
+  public addInfirmaryRecord(record: InfirmaryVisitRecord) {
+    const list = this.getInfirmaryRecords();
+    list.unshift(record);
+    this.saveInfirmaryRecords(list);
+  }
+
+  public getHouseDorms(): HouseDormRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.HOUSE_DORMS);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    this.saveHouseDorms(INITIAL_HOUSE_DORMS);
+    return INITIAL_HOUSE_DORMS;
+  }
+
+  public saveHouseDorms(dorms: HouseDormRecord[]) {
+    localStorage.setItem(STORAGE_KEYS.HOUSE_DORMS, JSON.stringify(dorms));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ges_house_dorms_changed', { detail: dorms }));
+    }
+  }
+
+  public getWelfareCases(): WelfareCaseRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.WELFARE_CASES);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    this.saveWelfareCases(INITIAL_WELFARE_CASES);
+    return INITIAL_WELFARE_CASES;
+  }
+
+  public saveWelfareCases(cases: WelfareCaseRecord[]) {
+    localStorage.setItem(STORAGE_KEYS.WELFARE_CASES, JSON.stringify(cases));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ges_welfare_cases_changed', { detail: cases }));
+    }
+  }
+
+  public addWelfareCase(caseRecord: WelfareCaseRecord) {
+    const list = this.getWelfareCases();
+    list.unshift(caseRecord);
+    this.saveWelfareCases(list);
   }
 
   public resetAllToDemo() {
