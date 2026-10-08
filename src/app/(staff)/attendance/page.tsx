@@ -204,14 +204,15 @@ export default function StaffAttendancePage() {
       setIsSendingOtp(false);
 
       if (res.ok && data.success) {
-        setDevOtpReceived(data.devOtp || '4821');
+        if (data.devOtp) setDevOtpReceived(data.devOtp);
         setAuthStep('otp_verification');
         setFeedback({
           type: 'info',
-          text:
+          text: data.message || (
             channel === 'whatsapp'
               ? `💬 2FA Code dispatched via WhatsApp to registered number.`
-              : `📱 2FA OTP SMS dispatched to registered number. Please enter the 4-digit code.`,
+              : `📱 2FA OTP SMS dispatched to registered number. Please enter the 4-digit code.`
+          ),
         });
       } else {
         throw new Error(data.message || 'Failed to dispatch 2FA SMS');

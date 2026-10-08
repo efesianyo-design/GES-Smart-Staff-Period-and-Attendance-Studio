@@ -267,14 +267,15 @@ export default function NonTeachingAttendancePage() {
       setIsSendingOtp(false);
 
       if (res.ok && data.success) {
-        setDevOtpReceived(data.devOtp || '4821');
+        if (data.devOtp) setDevOtpReceived(data.devOtp);
         setAuthStep('otp_verification');
         setFeedback({
           type: 'info',
-          text:
+          text: data.message || (
             channel === 'whatsapp'
               ? `💬 2FA Code dispatched via WhatsApp to ${staff.phone}`
-              : `📱 2FA OTP SMS sent to ${staff.phone}. Please enter the 4-digit code.`,
+              : `📱 2FA OTP SMS sent to ${staff.phone}. Please enter the 4-digit code.`
+          ),
         });
         speakInstruction('A 4-digit code has been sent to your phone. Please enter it now.');
       } else {

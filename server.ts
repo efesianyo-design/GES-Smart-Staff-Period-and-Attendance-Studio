@@ -504,46 +504,31 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const e164Phone = normalizeGhanaPhone(phone);
   const cleanDigits = e164Phone.replace(/[^0-9]/g, '');
   const now = Date.now();
+  const existing = otpStore.get(staffId);
 
-  // Cross-check in-flight active OTP by both staffId and phone number to prevent double SMS delivery
-  let existing = otpStore.get(staffId);
-  if (!existing) {
-    for (const [, entry] of otpStore.entries()) {
-      if (entry.phone === e164Phone && entry.expiresAt > now) {
-        existing = entry;
-        break;
-      }
-    }
-  }
+  // 30s debounce - Ghana telco safe
+  const COOLDOWN_MS = 30000;
+  const isRapidRepeat = existing && (now - (existing.lastSentAt || 0) < COOLDOWN_MS) && (existing.expiresAt > now);
 
-  // 45s debounce guard: if requested again within 45s, reuse active OTP and DO NOT dispatch duplicate SMS
-  const isRapidRepeat = existing && (now - (existing.lastSentAt || 0) < 45000) && (existing.expiresAt > now);
-
-  if (isRapidRepeat && existing) {
-    const repeatMsg = `Ghana Education Service (GES) Attendance Verification: Your 4-digit 2FA OTP code is ${existing.otp}. Valid for 5 minutes. Do not share.`;
-    const repeatWhatsappUrl = `https://wa.me/${cleanDigits}?text=${encodeURIComponent(repeatMsg)}`;
-
-    console.log(`[DEBOUNCE GUARD 45s] Reusing active OTP for ${staffId} (${existing.phone}). Prevents duplicate SMS dispatch.`);
+  if (isRapidRepeat) {
+    console.log(`[DEBOUNCE 30s] Blocked duplicate for ${staffId}`);
     return res.json({
       success: true,
-      channel,
+      blocked: true,
+      useWhatsApp: true,
       phone: existing.phone,
-      staffName,
-      schoolCode,
-      devOtp: existing.otp,
-      whatsappUrl: repeatWhatsappUrl,
-      arkeselDispatched: true,
-      message: 'Active OTP already dispatched to your phone. Please check your SMS inbox.',
-      expiresIn: Math.max(0, Math.ceil((existing.expiresAt - now) / 1000)),
+      whatsappUrl: `https://wa.me/${existing.phone.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(`GES OTP: ${existing.otp}`)}`,
+      message: `SMS already sent ${Math.round((now - existing.lastSentAt!)/1000)}s ago. Use WhatsApp for instant delivery or wait ${Math.round((COOLDOWN_MS - (now - existing.lastSentAt!))/1000)}s`,
+      expiresIn: Math.ceil((existing.expiresAt - now)/1000)
     });
   }
 
   // Generate fresh 4-digit numeric OTP
   const otp = Math.floor(1000 + Math.random() * 9000).toString();
-  const expiresAt = now + 5 * 60 * 1000; // 5 minutes
+  const expiresAt = now + 10 * 60 * 1000; // Extended to 10 minutes to prevent premature expiration
 
   const previousCodes = (existing && existing.expiresAt > now) ? (existing.validOtps || [existing.otp]) : [];
-  const validOtps = [...new Set([...previousCodes, otp])].slice(-3); // Keep last 3 codes
+  const validOtps = [...new Set([...previousCodes, otp])].slice(-5); // Retain last 5 valid codes
 
   // Store in memory with multi-code history
   otpStore.set(staffId, {
@@ -556,66 +541,33 @@ app.post('/api/auth/send-otp', async (req, res) => {
     lastSentAt: now,
   });
 
-  const messageBody = `Ghana Education Service (GES) Attendance Verification: Your 4-digit 2FA OTP code is ${otp}. Valid for 5 minutes. Do not share.`;
+  const messageBody = `Ghana Education Service (GES) Attendance Verification: Your 4-digit 2FA OTP code is ${otp}. Valid for 10 minutes. Do not share.`;
   const whatsappUrl = `https://wa.me/${cleanDigits}?text=${encodeURIComponent(messageBody)}`;
 
-  // Single-flight real Arkesel SMS dispatch
+  // Real dispatch with 12s timeout (not 2.5s) if ARKESEL_API_KEY is configured
   let arkeselDispatched = false;
-  let arkeselError: string | null = null;
-
-  if (channel === 'sms' && ARKESEL_API_KEY) {
+  if (ARKESEL_API_KEY && ARKESEL_API_KEY.trim()) {
     try {
-      let activeSender = ARKESEL_SENDER_ID;
-      let smsRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000); // 12s not 2.5s
+      const arkeselRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-key': ARKESEL_API_KEY.trim(),
-        },
+        headers: { 'api-key': ARKESEL_API_KEY.trim(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sender: activeSender,
+          sender: ARKESEL_SENDER_ID,
           message: messageBody,
-          recipients: [cleanDigits],
-          sandbox: false,
+          recipients: [e164Phone]
         }),
+        signal: controller.signal
       });
-
-      let smsData = await smsRes.json().catch(() => ({}));
-
-      // If custom sender ID is rejected by Arkesel, instantly retry with approved 'GES-SMART'
-      if (!smsRes.ok || smsData.status !== 'success') {
-        const errorMsg = String(smsData.message || '');
-        if (errorMsg.includes('Sender ID') && activeSender !== 'GES-SMART') {
-          console.warn(`[Arkesel Sender ID Warning]: '${activeSender}' failed (${errorMsg}). Retrying immediately with approved 'GES-SMART'...`);
-          activeSender = 'GES-SMART';
-          smsRes = await fetch('https://sms.arkesel.com/api/v2/sms/send', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'api-key': ARKESEL_API_KEY.trim(),
-            },
-            body: JSON.stringify({
-              sender: activeSender,
-              message: messageBody,
-              recipients: [cleanDigits],
-              sandbox: false,
-            }),
-          });
-          smsData = await smsRes.json().catch(() => ({}));
-        }
-      }
-
-      if (smsRes.ok && (smsData.status === 'success' || (Array.isArray(smsData.data) && smsData.data.length > 0) || smsData.code === 'ok')) {
-        arkeselDispatched = true;
-        console.log(`[Arkesel SMS Dispatch] Successfully sent to ${cleanDigits} with Sender ID: ${activeSender}`);
-      } else {
-        arkeselError = smsData.message || (typeof smsData === 'string' ? smsData : 'Arkesel delivery error');
-        console.warn('[Arkesel Gateway Error]:', arkeselError);
-      }
-    } catch (err: any) {
-      arkeselError = err?.message || String(err);
-      console.warn('[Arkesel Exception Notice]:', arkeselError);
+      clearTimeout(timeout);
+      const data = await arkeselRes.json().catch(() => ({}));
+      arkeselDispatched = arkeselRes.ok;
+    } catch (e) {
+      console.error('[ARKESEL TIMEOUT/ERROR]', e);
     }
+  } else {
+    console.log('[ARKESEL GATEWAY] ARKESEL_API_KEY not configured in environment. Using dev/instant OTP delivery mode.');
   }
 
   // Log dispatch in terminal
@@ -626,7 +578,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
   console.log(`Staff Member    : ${staffName} (${staffId})`);
   console.log(`Campus Code     : ${schoolCode}`);
   console.log(`One-Time Code   : ${otp}`);
-  console.log(`Arkesel Active  : ${arkeselDispatched ? 'YES (Dispatched Live)' : `Fallback Active (${arkeselError || 'No live dispatch'})`}`);
+  console.log(`Arkesel Active  : ${arkeselDispatched ? 'YES (Dispatched Live)' : 'Fallback / Offline'}`);
   console.log(`WhatsApp Link   : ${whatsappUrl}`);
   console.log(`======================================================\n`);
 
@@ -634,7 +586,6 @@ app.post('/api/auth/send-otp', async (req, res) => {
     success: true,
     channel,
     arkeselDispatched,
-    arkeselError,
     message:
       channel === 'whatsapp'
         ? `OTP successfully dispatched via WhatsApp to ${e164Phone}`
@@ -642,7 +593,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     phone: e164Phone,
     devOtp: otp,
     whatsappUrl,
-    expiresIn: 300,
+    expiresIn: Math.ceil((expiresAt - now) / 1000),
   });
 });
 
