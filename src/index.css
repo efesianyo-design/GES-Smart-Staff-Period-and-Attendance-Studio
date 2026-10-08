@@ -11,3 +11,29 @@
     scrollbar-width: none;  /* Firefox */
   }
 }
+
+/* Custom styling for Beacon Html5Qrcode Reader */
+#beacon-qr-reader {
+  border: none !important;
+  background: transparent !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#beacon-qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 1rem !important;
+}
+
+#beacon-qr-reader__header_message,
+#beacon-qr-reader__status_span,
+#beacon-qr-reader__dashboard_section_csr {
+  display: none !important;
+}
+

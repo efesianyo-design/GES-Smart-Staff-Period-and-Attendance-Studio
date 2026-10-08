@@ -70,9 +70,6 @@ export default function NonTeachingAttendancePage() {
   const geo = useGeolocation(config, schoolCode);
   const coords = geo.lat && geo.lng ? { latitude: geo.lat, longitude: geo.lng } : null;
 
-  // View Mode: 'individual' (regular clock in/out) vs 'muster_roll' (Supervisor roll call)
-  const [viewMode, setViewMode] = useState<'individual' | 'muster_roll'>('individual');
-
   // Iteration 1: Dual Device Mode
   // 'byod': Staff smartphone (scans campus beacon QR)
   // 'station': Shared Gate / Station Terminal (supports basic Yam Phone users via SMS OTP without personal camera)
@@ -100,11 +97,6 @@ export default function NonTeachingAttendancePage() {
 
   const [feedback, setFeedback] = useState<{ text: string; type: 'error' | 'success' | 'info' } | null>(null);
   const [todayRecord, setTodayRecord] = useState<NonTeachingAttendanceRecord | null>(null);
-
-  // Iteration 4: Supervisor Muster Roll State
-  const [selectedUnit, setSelectedUnit] = useState<string>('All Units');
-  const [allNonTeachingList, setAllNonTeachingList] = useState<NonTeachingStaffMember[]>([]);
-  const [allTodayRecords, setAllTodayRecords] = useState<NonTeachingAttendanceRecord[]>([]);
 
   // Clear legacy cached IDs
   useEffect(() => {
@@ -135,11 +127,8 @@ export default function NonTeachingAttendancePage() {
 
   // Refresh non-teaching list & today records
   const refreshRecords = useCallback(() => {
-    const list = storageEngine.getNonTeachingStaff();
     const todayStr = new Date().toISOString().split('T')[0];
     const records = storageEngine.getNonTeachingAttendance().filter((r) => r.date === todayStr);
-    setAllNonTeachingList(list);
-    setAllTodayRecords(records);
 
     if (selectedStaff) {
       const match = records.find((r) => r.staffId === selectedStaff.staffId);
@@ -416,67 +405,8 @@ export default function NonTeachingAttendancePage() {
     setAuthStep('success');
   };
 
-  // Supervisor Quick Endorse (Iteration 4)
-  const handleSupervisorEndorse = (staff: NonTeachingStaffMember) => {
-    soundSynthesizer.playScanBeep();
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-GH', { hour12: false });
-    const todayStr = now.toISOString().split('T')[0];
-
-    const records = storageEngine.getNonTeachingAttendance();
-    const existing = records.find((r) => r.staffId === staff.staffId && r.date === todayStr);
-
-    if (existing && !existing.clockOutTime) {
-      // Clock out
-      storageEngine.updateNonTeachingRecord(existing.id, {
-        clockOutTime: timeStr,
-        clockOutTimestamp: Date.now(),
-        verifiedBy: 'Unit Supervisor',
-      });
-      setFeedback({
-        type: 'success',
-        text: `✓ Supervisor marked Clock-Out for ${staff.name} at ${timeStr.slice(0, 5)}`,
-      });
-      speakInstruction(`Supervisor endorsed shift handover for ${staff.name}`);
-    } else {
-      // Clock in
-      const record: NonTeachingAttendanceRecord = {
-        id: `non-teach-sup-${Date.now()}`,
-        staffId: staff.staffId,
-        staffName: staff.name,
-        role: staff.role,
-        unit: staff.unit,
-        shift: staff.shift,
-        method: 'supervisor_rollcall',
-        date: todayStr,
-        clockInTime: timeStr,
-        clockInTimestamp: Date.now(),
-        punctualityStatus: 'on_time',
-        deviceSignature: getDeviceSignature(),
-        synced: true,
-        isOnCampus: true,
-        isIdentityVerified: true,
-        verifiedBy: 'Unit Head Muster Roll',
-      };
-      storageEngine.addNonTeachingRecord(record);
-      setFeedback({
-        type: 'success',
-        text: `✓ Supervisor endorsed muster roll arrival for ${staff.name} at ${timeStr.slice(0, 5)}`,
-      });
-      speakInstruction(`Arrival confirmed for ${staff.name} by unit supervisor`);
-    }
-
-    refreshRecords();
-  };
-
   const isOffCampus = !geo.isLoading && geo.distanceMeters !== null && geo.distanceMeters > config.radiusMeters;
   const distanceKm = geo.distanceMeters ? (geo.distanceMeters / 1000).toFixed(1) : '0';
-
-  // Filter staff by unit for Supervisor Muster Roll
-  const filteredMusterStaff = allNonTeachingList.filter((s) => {
-    if (selectedUnit === 'All Units') return true;
-    return s.unit.toLowerCase().includes(selectedUnit.toLowerCase());
-  });
 
   return (
     <div className="w-full max-w-[440px] mx-auto min-h-screen py-3 sm:py-6 px-3 sm:px-0 flex flex-col justify-center font-sans select-none">
